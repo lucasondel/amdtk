@@ -1,0 +1,28 @@
+#!/usr/bin/env python
+
+"""Shttps://news.google.fr/ 
+"""
+
+import argparse
+import pickle
+import amdtk
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('model', type=argparse.FileType('rb'),
+                        help='model to maximize')
+    parser.add_argument('lm', type=argparse.FileType('rb'),
+                        help='HPYP language model')
+    parser.add_argument('output', type=argparse.FileType('wb'),
+                        help='the model with incorporated LM')
+    args = parser.parse_args()
+
+    model = pickle.load(args.model)
+    model.lm = pickle.load(args.lm)
+    pickle.dump(model, args.output)
+
+if __name__ == '__main__':
+    main()
+else:
+    raise ImportError('this script cannot be imported')

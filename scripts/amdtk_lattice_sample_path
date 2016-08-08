@@ -1,0 +1,48 @@
+#!/usr/bin/env python
+
+"""Sample a path from a lattice."""
+
+import argparse
+import pickle
+import os
+import pywrapfst as fst
+import amdtk
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--ac_weight', type=float, default=1, 
+                        help='acoustic scale (default: 1)')
+    parser.add_argument('--lm_weight', type=float, default=1, 
+                        help='language model scale (default: 1)')
+    parser.add_argument('lattice', help='HTK lattice file path')
+    parser.add_argument('out', help='sample labels in a HTK label file '
+                                    '(without timing information)')
+    args = parser.parse_args()
+
+    # Check if the lattice is compressed with gzipped or not.
+    gzipped = False
+    _, ext = os.path.splitext(args.lattice)
+    if ext == '.gz':
+        gzipped = True
+
+    # Load the lattice into OpenFst format.
+    fst_lattice, id2label = amdtk.readHtkLattice(args.lattice, 
+                                                ac_weight=args.ac_weight, 
+                                                lm_weight=args.lm_weight, 
+                                                gzipped=gzipped)
+
+    # Sample path from the fst.
+    path = amdtk.samplePathFromFst(fst_lattice, id2label)
+
+    # Write the sampled path into a HTK label file.
+    mlf_data = []
+    for label in path:
+        mlf_data.append((label, 0.0, 0.0, None, None))
+    amdtk.writeHtkLabels(args.out, mlf_data)
+    
+
+if __name__ == '__main__':
+    main()
+else:
+    raise ImportError('this script cannot be imported')

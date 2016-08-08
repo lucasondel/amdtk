@@ -1,0 +1,45 @@
+#!/usr/bin/env python
+
+"""First step of the variational inference. It compute the expected
+value of the latent variables and the subsequent sufficient statistics
+of the model for the given data.
+"""
+
+import argparse
+import pickle
+import amdtk
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('model', help='model to fit on the data')
+    parser.add_argument('best_path', help='input best path file')
+    parser.add_argument('feats', help='features file')
+    parser.add_argument('out', help='accumulated statistics')
+    args = parser.parse_args()
+    
+    # Load the model.
+    with open(args.model, 'rb') as f:
+        model = pickle.load(f)
+        
+    # Load the sequence of units.
+    data = amdtk.readHtkLabels(args.best_path)
+    best_path = []
+    for entry in data:
+        best_path.append(entry[0])
+
+    # Load the features.
+    X = amdtk.readHtk(args.feats)
+
+    # COmpute the 1-Best expectation.
+    E_log_p_X, stats = amdtk.phoneLoopVb1BestExpectation(model, X, 
+                                                         best_path)
+
+    # Dump the accumulate statistics.   
+    with open(args.out, 'wb') as f:
+        pickle.dump((E_log_p_X, stats), f)
+
+if __name__ == '__main__':
+    main()
+else:
+    raise ImportError('this script cannot be imported')

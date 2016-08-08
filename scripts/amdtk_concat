@@ -1,0 +1,80 @@
+#!/usr/bin/env python
+
+"""Concatenate a set of label file (HTK, TIMIT or MLF) into a single MLF
+file.
+"""
+
+import argparse
+from amdtk.core import readTimitLabels
+from amdtk.core import readHtkLabels
+from amdtk.core import writeMlf
+import os
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    group = parser.add_mutually_exclusive_group(required=False)
+    group.add_argument('--timit', action='store_true',
+                       help='the files to concatenate are in TIMIT label '
+                       'format')
+    group.add_argument('--htk', action='store_true',
+                       help='the files to concatenate are in HTK label format')
+    parser.add_argument('--sampling_period', type=int, default=100000,
+                        help='the sampling period in 100ns used only if '
+                        '"timit" or "htk" options are specified')
+    parser.add_argument('--add_dirname', type=int, default=0,
+                        help='add the name of the %(metavar)s first '
+                        'directories to the key in the MLF', metavar='N')
+    parser.add_argument('--keyfile', '-k', type=str, default=None,
+                        help='the key file to use (instead of, or in addition to '
+                        'specifying the MLFs as arguments)')
+    parser.add_argument('--directory', '-d', type=str, default=os.getcwd(),
+                        help='the directory with the MLF files with names given by '
+                        'the key file')
+    parser.add_argument('--fname_format', '-F', type=str, default='{0}.lab',
+                        help='the formating string for the filename ({0} is the key)')
+    parser.add_argument('mlfs', nargs='*', help='the MLF files to concatenate')
+    parser.add_argument('output', help='new MLF file')
+    args = parser.parse_args()
+
+    mlfs = args.mlfs
+
+    if args.keyfile is not None:
+      with open(args.keyfile, 'r') as keyfile:
+        for key in keyfile:
+          key = key.rstrip('\n')
+          mlfs.append(os.path.join(args.directory, args.fname_format.format(key)))
+
+    with open(args.output, 'w') as out:
+        print('#!MLF!#', file=out)
+        for path in mlfs:
+            if args.timit or args.htk:
+                dirs = []
+                key = path
+                for i in range(args.add_dirname):
+                    dirname = os.path.dirname(key)
+                    name = os.path.basename(dirname)
+                    dirs.append(name)
+                    key = dirname
+                utt_name = ''
+                for d in reversed(dirs):
+                    utt_name += d+'_'
+                utt_name += os.path.basename(path)
+                if args.timit:
+                    entries = readTimitLabels(path, args.sampling_period)
+                    writeMlf(out, {utt_name: entries}, args.sampling_period,
+                              header=False)
+                elif args.htk:
+                    entries = readHtkLabels(path, args.sampling_period)
+                    writeMlf(out, {utt_name: entries}, args.sampling_period,
+                              header=False)
+            else:
+                with open(path, 'r') as f:
+                    lines = f.readlines()
+                    for line in lines[1:]:
+                        print(line.strip(), file=out)
+
+if __name__ == '__main__':
+    main()
+else:
+    raise ImportError('this script cannot be imported')

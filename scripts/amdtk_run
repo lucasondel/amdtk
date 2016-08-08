@@ -1,0 +1,35 @@
+#!/usr/bin/env python
+
+"""run a list of job"""
+
+import argparse
+import amdtk
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--profile', default='~/.profile',
+                        help='profile script to load before to run the job')
+    parser.add_argument('--ntasks', type=int, default=200,
+                        help='maximum number of concurrent tasks')
+    parser.add_argument('--options', help='the SGE options')
+    parser.add_argument('name', help='name of the task on the SGE')
+    parser.add_argument('list', help='list of files to process')
+    parser.add_argument('cmd', help='the general command to execute')
+    parser.add_argument('outdir', help='the output directory')
+    args = parser.parse_args()
+
+    env = amdtk.ParallelEnv.getEnvironment()
+    env.prepareOutputDirectory(args.outdir)
+    env.computeTaskLoad(args.list, args.ntasks)
+    env.prepareScript(args.name, args.cmd, args.options, args.profile)
+    failed = env.run()
+
+    if failed > 0:
+        print(failed, 'job(s) have failed')
+        exit(1)
+
+if __name__ == '__main__':
+    main()
+else:
+    raise ImportError('this script cannot be imported')

@@ -1,0 +1,36 @@
+#!/usr/bin/env python
+
+"""Estimate the unit posteriors for each frame of the utterance."""
+
+import argparse
+import pickle
+import amdtk
+from numpy import sqrt, log
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--hmm_states', action='store_true',
+                        help='output the hmm states posteriors')
+    parser.add_argument('--htk_trick', action='store_true',
+                        help='posteriors for HTK lattices')
+    parser.add_argument('model', help='model to fit on the data')
+    parser.add_argument('feats', help='features of the utterance')
+    parser.add_argument('out', help='HTK binary file')
+    args = parser.parse_args()
+
+    with open(args.model, 'rb') as f:
+        model = pickle.load(f)
+
+    X, infos = amdtk.readHtk(args.feats, infos=True)
+    p = amdtk.phoneLoopPosteriors(model, X, output_states=args.hmm_states)
+
+    if args.htk_trick:
+        p = sqrt(-2 * log(p.clip(min=1e-10)))
+
+    amdtk.writeHtk(args.out, p, infos[1])
+
+if __name__ == '__main__':
+    main()
+else:
+    raise ImportError('this script cannot be imported')

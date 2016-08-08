@@ -1,0 +1,124 @@
+#!/usr/bin/env python
+
+'''Score amdtk cluster labels against reference labels.'''
+
+import argparse
+import os
+import numpy as np
+from amdtk.core.internal_io import readMlf
+
+def __is_start_or_end_field(field):
+    return field.isdigit()
+
+def __is_score_field(field):
+    try:
+        float(field)
+    except ValueError:
+        return False
+    return True
+
+def probability_matrix(counts, alpha=1):
+    c = np.array(counts + alpha, dtype=float)
+    return (c.T/c.sum(axis=1)).T
+
+def get_labels_clusters(T_ref, T_new):
+    counts = {}
+    t_counts = {}
+    label_set = set()
+    cluster_set = set()
+    for utt in T_ref.keys():
+        labels = T_ref[utt]
+        clusters = T_new[utt]
+        for t in labels:
+            label, start, stop, _, _ = t
+            label_set.add(label)
+        for t in clusters:
+            cluster, start, stop, _, _ = t
+            cluster_set.add(cluster)
+
+    return list(label_set), list(cluster_set)
+
+def align(T_ref, T_new, labels, clusters):
+    counts_labels = np.zeros(len(labels))
+    counts_clusters = np.zeros(len(clusters))
+    counts = np.zeros((len(clusters), len(labels))) + 1
+    for utt in T_ref.keys():
+        data_ref = T_ref[utt]
+        data_new = T_new[utt]
+
+        mu = []
+        for t in data_ref:
+            label, start, stop, _, _ = t
+            mu.append(start+0.5*(stop-start))
+            idx = labels.index(label)
+            counts_labels[idx] += 1
+        mu = np.asarray(mu)
+
+        for t in data_new:
+            cluster, start, stop, _, _ = t
+            idx = clusters.index(cluster)
+            counts_clusters[idx] += 1
+            x = start + 0.5*(stop-start)
+            closest_label = ((x-mu)**2).argmin()
+            i = clusters.index(cluster)
+            j = labels.index(data_ref[closest_label][0])
+            counts[i,j] += 1
+
+    return counts, counts_labels, counts_clusters
+
+def main():
+    # Command line parsing.
+    #-----------------------------------------------------------------------
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('ref_mlf', help='reference MLF')
+    parser.add_argument('new_mlf', help='proposed MLF')
+    args = parser.parse_args()
+
+    # Load the MLFs.
+    #-----------------------------------------------------------------------
+    T_ref = readMlf(args.ref_mlf)
+    T_new = readMlf(args.new_mlf)
+
+    # Extract the reference and cluster labels.
+    #-----------------------------------------------------------------------
+    labels, clusters = get_labels_clusters(T_ref, T_new)
+    
+    # Map each cluster in the new transcription to the closest (in time)
+    # reference label.
+    #-----------------------------------------------------------------------
+    counts, counts_labels, counts_clusters = align(T_ref, T_new, labels, clusters)
+
+    # Estimate the conditional distribution of the reference label given the 
+    # cluster.
+    #-----------------------------------------------------------------------
+    p_X_given_Y = probability_matrix(counts, alpha=1e-12)
+
+    # Estimate the marginal distribution of the reference cluster labels. 
+    #-----------------------------------------------------------------------
+    p_X = np.asarray(counts.sum(axis=0), dtype=float) + 1e-12
+    p_X /= p_X.sum()
+    p_Y = np.asarray(counts.sum(axis=1), dtype=float) + 1e-12
+    p_Y /= p_Y.sum()
+
+    # Evaluate the conditional and marginal entropy.
+    #-----------------------------------------------------------------------
+    H_X_given_Y = -(p_Y.dot((p_X_given_Y*np.log2(p_X_given_Y)).sum(axis=1)))
+    H_X = -p_X.dot(np.log2(p_X))
+    H_Y = -p_Y.dot(np.log2(p_Y))
+    
+    # Evaluate the mutual information between reference labels and clusters.
+    #-----------------------------------------------------------------------
+    I_XY = H_X - H_X_given_Y
+
+    print('# refs units:', len(labels))
+    print('# proposed units:', len(clusters))
+    print('H(X):', H_X)
+    print('H(Y):', H_Y)
+    print('2*I(X;Y)/(H(X) + H(Y)):', 100*2*I_XY/(H_X + H_Y), '%')
+    print('I(X;Y)/(H(X)):', 100*I_XY/(H_X ), '%')
+    print('I(X;Y):',I_XY)
+
+if __name__ == '__main__':
+    main()
+else:
+    raise ImportError('this script cannot be imported')

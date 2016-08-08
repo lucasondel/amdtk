@@ -1,0 +1,147 @@
+#!/usr/bin/env python
+
+"""run a list of job on the SGE"""
+
+import argparse
+import os
+import shutil
+import time
+import subprocess
+
+JOB_TEMPLATE = """
+#$ -S /bin/bash
+#$ -N {name}
+#$ -j y
+#$ -o {logdir}/{name}.$TASK_ID
+#$ -V
+#$ {options}
+#$ -cwd
+#$ -t 1-{njobs}
+
+echo Job started on `date`
+
+cd {cwd}
+cat {profile}
+source {profile}
+
+LIST={flist}
+
+s=$(( (SGE_TASK_ID-1)*{ntasks} + 1 ))
+e=$(( (SGE_TASK_ID)*{ntasks} ))
+
+LINES=`sed -n "${{s}},${{e}}p" $LIST`
+for LINE in $LINES ; do
+    ITEM1=`echo $LINE | awk -F ':' '{{print $1}}'`
+    ITEM2=`echo $LINE | awk -F ':' '{{print $2}}'`
+
+    FILENAME=$(basename "$ITEM1")
+    DIR=$(dirname "$ITEM1")
+    EXT="${{FILENAME##*.}}"
+    BASENAME="${{FILENAME%.*}}"
+    OUTDIR={outdir}
+
+    # For debugging:
+    #echo host : `hostname`
+    #echo cmd  : {cmd}
+    #echo list : $LIST
+    #echo line: $LINE
+    #echo item1 : $ITEM1
+    #echo item2 : $ITEM2
+    #echo current directory: `pwd`
+
+    echo running: {cmd}
+    {cmd}
+    retcode=$?
+
+    if [ $retcode -ne 0 ]
+        then
+        echo 1 "{logdir}/{name}.$SGE_TASK_ID" > {logdir}/$SGE_TASK_ID.status
+        exit 1
+    fi
+done
+
+echo 0 "{logdir}/{name}.$SGE_TASK_ID" > {logdir}/$SGE_TASK_ID.status
+
+echo Job ended on `date`
+"""
+
+
+def runJob(options, cmd, njobs, outdir, qdir, logdir, flist, name, profile,
+           limit, ntasks):
+
+    script = os.path.join(qdir, name+'.qsub')
+    with open(script, 'w') as f:
+        f.write(JOB_TEMPLATE.format(name=name, logdir=logdir,
+                                    options=options,
+                                    njobs=njobs, flist=flist,
+                                    outdir=outdir, cwd=os.getcwd(), cmd=cmd,
+                                    profile=profile, ntasks=ntasks))
+    qcmd = 'qsub -tc ' + str(limit) + ' < ' + script
+    subprocess.call(qcmd, shell=True, stdout=subprocess.PIPE)
+
+
+def waitJobs(njobs, logdir):
+    wait = True
+    while wait:
+        wait = False
+        for i in range(njobs):
+            if not os.path.exists(os.path.join(logdir, str(i+1)+'.status')):
+                wait = True
+        time.sleep(1)
+
+    retval = 0
+    for i in range(njobs):
+        with open(os.path.join(logdir, str(i+1)+'.status'), 'r') as f:
+            tokens = f.readline().strip().split()
+            errcode = int(tokens[0])
+            logfile = tokens[1]
+            if errcode != 0:
+                retval += 1
+                print('Job has failed. See', logfile)
+    return retval
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--profile', default='~/.profile',
+                        help='profile script to load before to run the job')
+    parser.add_argument('--limit', type=int, default=200,
+                        help='limit the maximum number of concurrent tasks')
+    parser.add_argument('--n', type=int, default=1,
+                        help='number of tasks per job')
+    parser.add_argument('name', help='name of the task on the SGE')
+    parser.add_argument('options', help='the SGE options')
+    parser.add_argument('list', help='list of files to process')
+    parser.add_argument('cmd', help='the general command to execute')
+    parser.add_argument('outdir', help='the output directory')
+    args = parser.parse_args()
+
+    outdir = os.path.abspath(args.outdir)
+    qdir = os.path.join(outdir, 'sge')
+    if os.path.exists(qdir):
+        shutil.rmtree(qdir)
+    logdir = os.path.join(qdir, 'log')
+    os.makedirs(qdir)
+    os.makedirs(logdir)
+    with open(args.list, 'r') as f:
+        lines = f.readlines()
+        njobs = int(len(lines)/args.n)
+        if len(lines) % args.n > 0:
+            njobs += 1
+    try:
+        runJob(args.options, args.cmd, njobs, outdir, qdir, logdir, args.list,
+               args.name, args.profile, args.limit, args.n)
+        failed = waitJobs(njobs, logdir)
+    except KeyboardInterrupt:
+        delcmd = 'qdel ' + args.name
+        subprocess.call(delcmd, shell=True)
+        exit(1)
+    else:
+        if failed > 0:
+            print(failed, 'job(s) have failed.')
+            exit(1)
+
+if __name__ == '__main__':
+    main()
+else:
+    raise ImportError('this script cannot be imported')

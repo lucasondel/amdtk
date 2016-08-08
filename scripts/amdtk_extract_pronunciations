@@ -1,0 +1,134 @@
+#!/usr/bin/env python
+
+'''Extract word pronunciations from acoustic unit and word labelings.'''
+
+import argparse
+import os
+import pprint
+import numpy as np
+from collections import defaultdict
+from amdtk.core.internal_io import readMlf
+
+
+def align(T_lab, T_wrd):
+    aligned = {}
+
+    for utt in T_wrd.keys():
+        data_lab = T_lab[utt]
+        data_wrd = T_wrd[utt]
+
+        i = 0  # current word index
+
+        aligned[utt] = [(w[0], [], w[1:3]) for w in data_wrd]
+        
+        for label, l_start, l_end, _, _ in data_lab:
+            # Loop through all the words that coincide with this unit.
+            # Find the word that overlaps the most with this unit.
+            max_dur = 0
+            max_dur_idx = None
+            while i < len(data_wrd):
+                word, w_start, w_end, _, _ = data_wrd[i]
+
+                # Compute how much the word overlaps with this unit.
+                dur = min(w_end, l_end) - max(w_start, l_start)
+                if dur > max_dur:
+                    max_dur, max_dur_idx = dur, i
+
+                if l_end <= w_end:
+                    break
+
+                i += 1
+
+            if max_dur_idx is not None:
+                aligned[utt][max_dur_idx][1].append((label, l_start, l_end))
+
+            if i >= len(data_wrd):
+                break
+
+    return aligned
+
+def get_word_pronunciations(aligned):
+    pdict = defaultdict(lambda: defaultdict(int))
+
+    for utt in aligned.keys():
+        for word, units, _ in aligned[utt]:
+            pron = ' '.join([u for u, _, _ in units])
+            pdict[word][pron] += 1
+
+    pdict = {k: dict(v) for k, v in pdict.items()}
+
+    return pdict
+
+def get_utterance_pronunciations(aligned, word_delimiter):
+    pdict = defaultdict(lambda: defaultdict(int))
+
+    for utt in aligned.keys():
+        text = word_delimiter.join([w for w, _, _ in aligned[utt]])
+        pron = ' '.join(
+                [' '.join([u for u, _, _ in units])
+                 for _, units, _ in aligned[utt]])
+
+        pdict[text][pron] += 1
+
+    pdict = {k: dict(v) for k, v in pdict.items()}
+
+    return pdict
+
+def get_raw_utterance_pronunciations(T_lab, T_wrd, word_delimiter):
+    pdict = defaultdict(lambda: defaultdict(int))
+    
+    for utt in T_wrd.keys():
+        text = word_delimiter.join([w[0] for w in T_wrd[utt]])
+        pron = ' '.join([u[0] for u in T_lab[utt]])
+
+        pdict[text][pron] += 1
+
+    pdict = {k: dict(v) for k, v in pdict.items()}
+
+    return pdict
+
+
+def main():
+    # Command line parsing.
+    #-----------------------------------------------------------------------
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('lab', help='AUD label MLF')
+    parser.add_argument('wrd', help='TIMIT WRD MLF')
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--utterances', action='store_true',
+        help='treat whole utterances as words')
+    group.add_argument('--raw_utterances', action='store_true',
+        help='treat whole utterances as words and do not perfom alignment')
+    parser.add_argument('-d', '--delimiter', type=str,
+        help='word delimiter (default is empty string)', default='')
+    args = parser.parse_args()
+
+    # Load the MLF and WRD file.
+    #-----------------------------------------------------------------------
+    T_lab = readMlf(args.lab)
+    T_wrd = readMlf(args.wrd)
+
+    
+    if args.raw_utterances:
+        # Collect the pronunciations of all utterances
+        pdict = get_raw_utterance_pronunciations(T_lab, T_wrd, args.delimiter)
+    else:
+        # Align the acoustic units to words, utterance by utterance.
+        aligned = align(T_lab, T_wrd)
+
+        # Collect the pronunciations of all words/utterances
+        if args.utterances:
+            pdict = get_utterance_pronunciations(aligned, args.delimiter)
+        else:
+            pdict = get_word_pronunciations(aligned)
+
+    for w in sorted(pdict.keys()):
+        for p, c in sorted(pdict[w].items(), key=lambda x: x[1], reverse=True):
+            if len(p) > 0:
+                print('{0}{1}{0}\t{2}\t{3}'.format(args.delimiter, w, p, c))
+    
+
+if __name__ == '__main__':
+    main()
+else:
+    raise ImportError('this script cannot be imported')

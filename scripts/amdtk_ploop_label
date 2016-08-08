@@ -1,0 +1,44 @@
+#!/usr/bin/env python
+
+"""Label the a sequence of features using the phone loop model."""
+
+import argparse
+import pickle
+import amdtk
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--hmm_states', action='store_true',
+                        help='output the hmm states as units')
+    parser.add_argument('--lscale', default=0., type=float,
+                        help='log scale for the units weights', metavar='LS')
+    parser.add_argument('--lscale_full', default=0., type=float,
+                        help='log scale for the all the transition weights',
+                        metavar='LS')
+    parser.add_argument('model', help='model to fit on the data')
+    parser.add_argument('feats', help='features of the utterance')
+    parser.add_argument('out', help='labels in a HTK label file')
+    args = parser.parse_args()
+
+    with open(args.model, 'rb') as f:
+        model = pickle.load(f)
+    X, infos = amdtk.readHtk(args.feats, infos=True)
+    mlf_data = []
+    path = amdtk.phoneLoopDecode(model, X, output_states=args.hmm_states,
+                                 lscale=args.lscale,
+                                 lscale_full=args.lscale_full)
+    previous_state = path[0]
+    start = 0
+    for i, state in enumerate(path[1:]):
+        if state != previous_state:
+            mlf_data.append(('a'+str(previous_state), start, i+1, None, None))
+            previous_state = state
+            start = i+1
+    mlf_data.append(('a'+str(previous_state), start, i+1, None, None))
+    amdtk.writeHtkLabels(args.out, mlf_data, infos[1])
+
+if __name__ == '__main__':
+    main()
+else:
+    raise ImportError('this script cannot be imported')

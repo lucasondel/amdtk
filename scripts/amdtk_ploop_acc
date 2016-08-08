@@ -1,0 +1,48 @@
+#!/usr/bin/env python
+
+"""Accumulate the sufficient statistics computed during the
+"expectation" step of the training.
+"""
+
+import argparse
+import pickle
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('stats', help='list stats files computed with the '
+                        'current model')
+    parser.add_argument('output', type=argparse.FileType('wb'),  help='the '
+                        'accumulated statistics')
+    args = parser.parse_args()
+    with open(args.stats, 'r') as f:
+        for i, line in enumerate(f):
+            path = line.strip()
+            if i == 0:
+                with open(path, 'rb') as f2:
+                    E_log_p_X, stats0 = pickle.load(f2)
+                tdp_stats0, gmm_stats0, gaussian_stats0 = stats0
+            else:
+                with open(path, 'rb') as f2:
+                    v, stats = pickle.load(f2)
+                E_log_p_X += v
+                tdp_stats, gmm_stats, gaussian_stats = stats
+                tdp_stats0 += tdp_stats
+                for j in gmm_stats:
+                    try:
+                        gmm_stats0[j] += gmm_stats[j]
+                    except KeyError:
+                        gmm_stats0[j] = gmm_stats[j] 
+                for key in gaussian_stats:
+                    try:
+                        gaussian_stats0[key] += gaussian_stats[key]
+                    except KeyError:
+                        gaussian_stats0[key] = gaussian_stats[key]
+
+    pickle.dump((E_log_p_X, (tdp_stats0, gmm_stats0,
+                             gaussian_stats0)), args.output)
+
+if __name__ == '__main__':
+    main()
+else:
+    raise ImportError('this script cannot be imported')

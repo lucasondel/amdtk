@@ -1,0 +1,60 @@
+#!/usr/bin/env python
+
+"""Create and initialize a new phone loop model."""
+
+import argparse
+import pickle
+from amdtk.models import BayesianInfinitePhoneLoop
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--seed', default=-1, type=int, help='value to seed '
+                        'the random generators with')
+    parser.add_argument('--concentration', default=1, type=float,
+                        help='concentration of the Dirichlet Process '
+                        '(default: 1)')
+    parser.add_argument('--truncation', default=50, type=int,
+                        help='truncation of the Dirichlet process '
+                        '(default: 50)')
+    parser.add_argument('--eta', default=1, type=float, help='hyper-parameter '
+                        'for the HMM transition (default: 1)')
+    parser.add_argument('--nstates', default=1, type=int, help='number of '
+                        'states per HMM (default: 1)')
+    parser.add_argument('--ncomponents', default=1, type=int, help='number of '
+                        'Gaussian per GMM (default: 1)')
+    parser.add_argument('--alpha', default=3, type=float,
+                        help='hyper-parameter of the GMM weights (default: 3')
+    parser.add_argument('--a', default=3, type=float, help='hyper-parameter '
+                        'of the Gaussians variance (shape) (default: 3)')
+    parser.add_argument('--b', default=3, type=float, help='hyper-parameter '
+                        'of the Gaussians variance (scale) (default: 3)')
+    parser.add_argument('--kappa', default=5, type=float,
+                        help='hyper-parameter of the Gaussians mean (coeff '
+                        'precision) (default: 5)')
+    parser.add_argument('stats', help='stats of the features')
+    parser.add_argument('output', help='the created model')
+    args = parser.parse_args()
+
+    if args.seed > 0:
+        import numpy
+        import random
+        numpy.random.seed(args.seed)
+        random.seed(args.seed)
+
+    with open(args.stats, 'rb') as f:
+        stats = pickle.load(f)
+
+    model = BayesianInfinitePhoneLoop(args.truncation, args.concentration,
+                                      args.eta, args.nstates, args.alpha,
+                                      args.ncomponents, stats['mean'],
+                                      args.kappa, args.a, args.b*stats['cov'],
+                                      stats['mean'], stats['cov'])
+
+    with open(args.output, 'wb') as f:
+        pickle.dump(model, f)
+
+if __name__ == '__main__':
+    main()
+else:
+    raise ImportError('this script cannot be imported')

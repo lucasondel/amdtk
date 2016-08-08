@@ -1,0 +1,12 @@
+*pycache*
+*~
+.spyderproject
+.spyderworkspace
+./amdtk/extras
+./install
+./openfst-1.5.3
+*.keys
+*.scp
+*.fpaths
+*.flist
+*.pyc
