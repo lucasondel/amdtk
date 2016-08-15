@@ -24,10 +24,10 @@ class AcousticModel(metaclass=abc.ABCMeta):
         Returns
         -------
         E_llh : numpy.ndarray
-            The expected value of the log-likelihood per frame.
-        data : obect
-            Additional information that the model can re-use while
-            accumulating the statistics.
+            The (expected value of the) log-likelihood per frame.
+        data : object
+            Additional data that the model can re-use when accumulating
+            the statistics.
 
         """
         pass

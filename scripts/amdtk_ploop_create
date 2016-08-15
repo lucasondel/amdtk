@@ -8,6 +8,8 @@ import numpy as np
 from amdtk.models import BayesianGaussianDiagCov
 from amdtk.models import BayesianMixture
 from amdtk.models import GMMAcousticModel
+from amdtk.models import TruncatedDirichletProcess
+from amdtk.models import UnigramDecodableGraph
 from amdtk.models import BayesianInfinitePhoneLoop
 
 
@@ -91,22 +93,28 @@ def main():
             gmms.append(BayesianMixture(args.alpha * np.ones(args.ncomponents),
                                         gaussians))
 
+    # Create the truncated Dirichlet Process prior for the phone loop.
+    # ------------------------------------------------------------------
+    g1 = np.ones(args.truncation)
+    g2 = np.zeros(args.truncation) + args.concentration
+    tdp = TruncatedDirichletProcess(g1, g2)
+
     # Initialize the acoustic model structure of the phone loop.
     # ------------------------------------------------------------------
-    am = GMMAcousticModel(args.truncation, args.nstates, gmms)
+    acoustic_model = GMMAcousticModel(args.truncation, args.nstates, gmms)
+
+    # Create the decodable graph.
+    # ------------------------------------------------------------------
+    dgraph = UnigramDecodableGraph(args.truncation, args.nstates)
 
     # Create the phone loop model.
     # ------------------------------------------------------------------
-#    model = BayesianInfinitePhoneLoop(args.truncation, args.concentration,
-#                                      args.nstates, args.alpha,
-#                                      args.ncomponents, stats['mean'],
-#                                      args.kappa, args.a, args.b*stats['cov'],
-#                                      stats['mean'], stats['cov'])
+    model = BayesianInfinitePhoneLoop(tdp, dgraph, acoustic_model)
 
     # Dump the model on the disk.
     # ------------------------------------------------------------------
-#    with open(args.output, 'wb') as f:
-#        pickle.dump(model, f)
+    with open(args.output, 'wb') as f:
+        pickle.dump(model, f)
 
 if __name__ == '__main__':
     main()
