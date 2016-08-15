@@ -10,7 +10,8 @@ from .multivariate_gaussian import BayesianGaussianDiagCov
 from .normal_gamma import NormalGamma
 from .phone_loop import createHmmSkeleton
 from .phone_loop import BayesianInfinitePhoneLoop
-from .phone_loop_fst import BayesianInfinitePhoneLoopFst
 from .hpyp import PitmanYorProcess
 from .hpyp import HierarchicalPitmanYorProcess
 from .decodable_graph import UnigramDecodableGraph
+from .acoustic_model import AcousticModel
+from .acoustic_model import GMMAcousticModel

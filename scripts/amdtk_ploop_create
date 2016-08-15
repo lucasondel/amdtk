@@ -4,6 +4,10 @@
 
 import argparse
 import pickle
+import numpy as np
+from amdtk.models import BayesianGaussianDiagCov
+from amdtk.models import BayesianMixture
+from amdtk.models import GMMAcousticModel
 from amdtk.models import BayesianInfinitePhoneLoop
 
 
@@ -34,23 +38,75 @@ def main():
     parser.add_argument('output', help='the created model')
     args = parser.parse_args()
 
+    # Seed the random generators if requested.
+    # ------------------------------------------------------------------
     if args.seed > 0:
         import numpy
         import random
         numpy.random.seed(args.seed)
         random.seed(args.seed)
 
+    # Load the stats of the data for initializing the Gaussians.
+    # ------------------------------------------------------------------
     with open(args.stats, 'rb') as f:
         stats = pickle.load(f)
 
-    model = BayesianInfinitePhoneLoop(args.truncation, args.concentration,
-                                      args.nstates, args.alpha,
-                                      args.ncomponents, stats['mean'],
-                                      args.kappa, args.a, args.b*stats['cov'],
-                                      stats['mean'], stats['cov'])
+    # Hyper-parameters for the Gamma distribution is computed from the
+    # variance of the data.
+    # ------------------------------------------------------------------
+    b = args.b * stats['cov']
 
-    with open(args.output, 'wb') as f:
-        pickle.dump(model, f)
+    # Initialize the GMMs.
+    # ------------------------------------------------------------------
+    gmms = []
+    for i in range(args.truncation):
+        for j in range(args.nstates):
+
+            # Initialize the set of Gaussian for the current GMM.
+            # ----------------------------------------------------------
+            gaussians = []
+            for k in range(args.ncomponents):
+
+                # Initialize the mean of the posterior distribution of
+                # the Gaussian by sampling a random value from a
+                # Gaussian mean and variance given by the statistics
+                # provided.
+                # ------------------------------------------------------
+                dc = np.diag(stats['cov'])
+                mu_n = np.random.multivariate_normal(stats['mean'], dc)
+
+                # Create the Gaussian.
+                # ------------------------------------------------------
+                gaussian = BayesianGaussianDiagCov(stats['mean'],
+                                                   args.kappa,
+                                                   args.a,
+                                                   b,
+                                                   mu_n,
+                                                   args.kappa,
+                                                   args.a,
+                                                   b.copy())
+
+                gaussians.append(gaussian)
+
+            gmms.append(BayesianMixture(args.alpha * np.ones(args.ncomponents),
+                                        gaussians))
+
+    # Initialize the acoustic model structure of the phone loop.
+    # ------------------------------------------------------------------
+    am = GMMAcousticModel(args.truncation, args.nstates, gmms)
+
+    # Create the phone loop model.
+    # ------------------------------------------------------------------
+#    model = BayesianInfinitePhoneLoop(args.truncation, args.concentration,
+#                                      args.nstates, args.alpha,
+#                                      args.ncomponents, stats['mean'],
+#                                      args.kappa, args.a, args.b*stats['cov'],
+#                                      stats['mean'], stats['cov'])
+
+    # Dump the model on the disk.
+    # ------------------------------------------------------------------
+#    with open(args.output, 'wb') as f:
+#        pickle.dump(model, f)
 
 if __name__ == '__main__':
     main()
