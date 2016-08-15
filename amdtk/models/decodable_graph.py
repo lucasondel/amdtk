@@ -59,6 +59,12 @@ class UnigramDecodableGraph(DecodableGraph):
             self._final_states.append(self._final_states[i - 1] + nstates)
             self._init_states.append(self._final_states[-1] - nstates + 1)
 
+        # Create the mapping state -> index that will be used during the
+        # forward-backward algorithm.
+        self._state_index = {}
+        for i in range(nunits * nstates):
+            self._state_index[i + 1] = i
+
         # Connect the graph's states.
         self.__connectStates()
 
@@ -107,7 +113,7 @@ class UnigramDecodableGraph(DecodableGraph):
         if arc.ilabel == 0:
             arcs = []
             for new_arc in graph.arcs(arc.nextstate):
-                arcs += self.__consumeEpsilons(new_arc)
+                arcs += self.__consumeEpsilons(graph, new_arc)
             return arcs
         else:
             return [arc]
@@ -118,7 +124,8 @@ class UnigramDecodableGraph(DecodableGraph):
         if frame_index == 0:
             log_alpha = fst.Weight.One('log')
         else:
-            log_alpha = log_alphas[frame_index - 1, state - 1]
+            state_idx = self._state_index[state]
+            log_alpha = log_alphas[frame_index - 1, state_idx]
 
         # Get all the arcs to browse.
         arcs = []
@@ -133,7 +140,7 @@ class UnigramDecodableGraph(DecodableGraph):
                 continue
 
             # Index of the state we propagate the forward recursion.
-            next_state_idx = arc.nextstate - 1
+            next_state_idx = self._state_index[arc.nextstate]
 
             # Convert the acoustic weight into OpenFst weight.
             ac_weight = fst.Weight('log', -llhs[frame_index, next_state_idx])
@@ -159,14 +166,18 @@ class UnigramDecodableGraph(DecodableGraph):
         if frame_index == len(llhs) - 1:
             # Add the next states to the active state set.
             for arc in self._r_graph.arcs(state):
-                log_betas[frame_index, arc.nextstate - 1] = \
+                next_state_idx = self._state_index[arc.nextstate]
+                log_betas[frame_index, next_state_idx] = \
                     fst.Weight.One('log')
                 active_states.add(arc.nextstate)
 
             return
 
+        # Index of the current state.
+        state_idx = self._state_index[state]
+
         # Backward value up to the current state.
-        log_beta = log_betas[frame_index + 1, state - 1]
+        log_beta = log_betas[frame_index + 1, state_idx]
 
         # Get all the arcs to browse.
         arcs = []
@@ -181,11 +192,11 @@ class UnigramDecodableGraph(DecodableGraph):
                 continue
 
             # Index of the state we propagate the backward recursion.
-            next_state_idx = arc.nextstate - 1
+            next_state_idx = self._state_index[arc.nextstate]
 
             # Convert the acoustic weight into OpenFst weight.
             ac_weight = \
-                fst.Weight('log', -llhs[frame_index + 1, state - 1])
+                fst.Weight('log', -llhs[frame_index + 1, state_idx])
 
             # Weight to add for this state.
             weight = fst.times(arc.weight, log_beta)
