@@ -26,8 +26,8 @@ fi
 n=0 
 
 echo "($((++n))) Data preparation..."
-#local/prepare_data.sh $setup || exit 1
-local/prepare_data_clsp.sh $setup || exit 1 # Use this on clsp grid
+local/prepare_data.sh $setup || exit 1
+#local/prepare_data_clsp.sh $setup || exit 1 # Use this on clsp grid
 echo done
 
 echo "($((++n))) Features extraction..."
@@ -55,7 +55,7 @@ echo done
 
 echo "($((++n))) Retraining the phone loop with a bigram LM..."
 echo "path: $root/$model_type/bigram"
-utils/phone_loop_retrain.sh $setup 5 5 $root/$model_type/unigram \
+utils/phone_loop_retrain_1best.sh $setup 10 $root/$model_type/unigram \
     $root/$model_type/bigram || exit 1
 echo done
 
