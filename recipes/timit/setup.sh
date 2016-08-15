@@ -1,17 +1,17 @@
 #
-# This file defines all the configuration variables for a particular 
-# experiment. Set the different paths according to your system. Most of the 
+# This file defines all the configuration variables for a particular
+# experiment. Set the different paths according to your system. Most of the
 # values predefined here are generic and should yield decent results.
-# However, they are most likely not optimal and need to be tuned for each 
+# However, they are most likely not optimal and need to be tuned for each
 # particular data set.
 #
 
 ############################################################################
 # Directories.                                                             #
 ############################################################################
-#db_path=/export/corpora/LDC/LDC93S1/timit/TIMIT  
+#db_path=/export/corpora/LDC/LDC93S1/timit/TIMIT
 db_path=/mnt/matylda2/data/TIMIT/timit
-root=$(pwd -P)  
+root=$(pwd -P)
 
 ############################################################################
 # SGE settings.                                                            #
@@ -26,10 +26,10 @@ export AMDTK_PARALLEL_ENV="sge"
 parallel_n_core=100
 parallel_profile="--profile $root/path.sh"
 
-## SGE - BUT ## 
+## SGE - BUT ##
 queues="all.q@@stable"
 
-## SGE - CLSP ## 
+## SGE - CLSP ##
 #queues="all.q"
 
 ############################################################################
@@ -38,7 +38,7 @@ queues="all.q@@stable"
 scp=${root}/data/all.scp
 fea_ext='fea'
 fea_type=mfcc
-fea_dir=$root/$fea_type  
+fea_dir=$root/$fea_type
 fea_conf=$root/conf/$fea_type.cfg
 
 ## SGE - BUT ##
@@ -52,7 +52,6 @@ fea_parallel_opts="-q $queues -l scratch1=0.3"
 ############################################################################
 concentration=1
 truncation=100
-eta=3
 nstates=3
 alpha=3
 ncomponents=2
@@ -69,10 +68,10 @@ train_dir=$root/$model_type/training
 train_keys=$root/data/train.keys
 train_niter=10
 
-## SGE - BUT ## 
+## SGE - BUT ##
 train_parallel_opts="-q $queues -l scratch1=0.2,matylda5=0.3"
 
-## SGE - CLSP ## 
+## SGE - CLSP ##
 #train_parallel_opts="-q $queues -l arch=*64"
 
 ############################################################################
@@ -88,10 +87,10 @@ ac_weight=1
 ############################################################################
 post_keys=$root/data/train.keys
 
-## SGE - BUT ## 
+## SGE - BUT ##
 post_sge_res="-q $queues -l matylda5=0.3"
 
-## SGE - BUT ## 
+## SGE - BUT ##
 #post_sge_res="-q $queues -l arch=*64"
 
 ############################################################################
@@ -104,10 +103,10 @@ latt_count_order=3
 sfx=bt${beam_thresh}_p${penalty}_gs${gscale}
 conf_latt_dir=${root}/${model_type}/conf_lattices
 
-## SGE - BUT ## 
+## SGE - BUT ##
 latt_parallel_opts="-q $queues -l matylda5=0.3"
 
-## SGE - CLSP ## 
+## SGE - CLSP ##
 #latt_parallel_opts="-q $queues -l arch=*64"
 
 ############################################################################
@@ -117,10 +116,10 @@ label_model="$train2_dir/iter$train2_niter/model.bin"
 label_fea_dir=$fea_dir
 label_keys=$root/data/test.keys
 
-## SGE - BUT ## 
+## SGE - BUT ##
 label_parallel_opts="-q $queues -l matylda5=0.3"
 
-## SGE - CLSP ## 
+## SGE - CLSP ##
 #label_parallel_opts="-q $queues -l arch=*64"
 
 ############################################################################

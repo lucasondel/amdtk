@@ -94,7 +94,7 @@ class BayesianInfinitePhoneLoop(DiscreteLatentModel):
         to the accumulated statistics.
     """
 
-    def __init__(self, trunc, ctrt, eta, nstates, alpha, ncomponents, mu,
+    def __init__(self, trunc, ctrt, nstates, alpha, ncomponents, mu,
                  kappa, a, b, mean, cov):
         """Create a (infinite) mixture of HMM/GMM
 
@@ -106,9 +106,6 @@ class BayesianInfinitePhoneLoop(DiscreteLatentModel):
             model.
         ctrt : float
             Concentration parameter of the Dirichlet process.
-        eta : float
-            Hyper parameter for the symmetric Dirichlet distribution of
-            each row of the HMM transition matrix.
         nstates : int
             Number of states for the HMM component.
         alpha : float
@@ -186,7 +183,7 @@ class BayesianInfinitePhoneLoop(DiscreteLatentModel):
         old_settings = np.seterr(divide='ignore')
         self.log_A = np.log((skeleton.T/skeleton.sum(axis=1)).T)
         np.seterr(**old_settings)
-        
+
         # By default no language model.
         self.lm = None
 
@@ -220,19 +217,19 @@ class BayesianInfinitePhoneLoop(DiscreteLatentModel):
 
     def createLinearTransitionMatrix(self, seq_len):
         """ seq length """
-        
+
         # Probability of initial state.
         self.log_pi = np.zeros(seq_len * self.nstates) - np.inf
         self.log_pi[0] = 0.
 
         # Transition matrix
-        self.log_A = np.zeros((self.log_pi.shape[0], 
-                               self.log_pi.shape[0]), dtype=float) 
+        self.log_A = np.zeros((self.log_pi.shape[0],
+                               self.log_pi.shape[0]), dtype=float)
         self.log_A -= np.inf
         dim, _ = self.log_A.shape
         diag_indices = np.diag_indices(dim)
         self.log_A[diag_indices] = np.log(0.5)
-        self.log_A[diag_indices[0][:dim-1], 
+        self.log_A[diag_indices[0][:dim-1],
                    diag_indices[1][:dim-1] + 1] = np.log(0.5)
         self.log_A[-1, -1] = np.log(1.)
 
@@ -264,12 +261,11 @@ class BayesianInfinitePhoneLoop(DiscreteLatentModel):
                 s_unit_id = self.getUnitId(ss)
                 prob = self.lm.predictiveProbability(level, context, s_unit_id)
                 self.log_pi[ss] = np.log(prob)
-            
-            # Bigram transitions. 
+
+            # Bigram transitions.
             for ss in self.init_states:
                 for fs in self.final_states:
                     self.log_A[fs, ss] = self.logProbLm(ss, fs)
-
 
     def evalAcousticModel(self, X):
         """Compute the expected value of the log-likelihood of the
