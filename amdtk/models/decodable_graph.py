@@ -3,6 +3,7 @@
 be used to discover acoustic units."""
 
 import abc
+import tempfile
 import numpy as np
 import pywrapfst as fst
 
@@ -33,6 +34,40 @@ class UnigramDecodableGraph(DecodableGraph):
     @property
     def graph(self):
         return self._graph
+
+    # ------------------------------------------------------------------
+    # We override the pickling behavior of the object to be able to deal
+    # with OpenFst component. This is inefficient as we have to write
+    # the object on the disk but it avoid to modify the OpenFst API.
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+
+        out = tempfile.NamedTemporaryFile()
+        state['_graph'].write(out.name)
+        with open(out.name, 'rb') as f:
+            state['_graph'] = f.read()
+
+        out = tempfile.NamedTemporaryFile()
+        state['_r_graph'].write(out.name)
+        with open(out.name, 'rb') as f:
+            state['_r_graph'] = f.read()
+
+        return state
+
+    def __setstate__(self, newstate):
+        out = tempfile.NamedTemporaryFile()
+        with open(out.name, 'wb') as f:
+            f.write(newstate['_graph'])
+        newstate['_graph'] = fst.Fst.read(out.name)
+
+        out = tempfile.NamedTemporaryFile()
+        with open(out.name, 'wb') as f:
+            f.write(newstate['_r_graph'])
+        newstate['_r_graph'] = fst.Fst.read(out.name)
+
+        self.__dict__.update(newstate)
+    # ------------------------------------------------------------------
 
     def __init__(self, nunits, nstates):
         self.nunits = nunits
