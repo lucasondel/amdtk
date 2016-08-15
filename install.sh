@@ -132,14 +132,14 @@ else
 fi
 
 # Compile and install fstphicompose
-install_prefix="$amdtk_root"/extras/bin
-if [[ ! -f "$install_prefix"/fstphicompose ]]; then
-    mkdir -p "$install_prefix"
-    cd "$amdtk_root"/tools/fstphicompose
-    make PREFIX="$prefix"
-    make install INSTALL_PREFIX="$install_prefix"
-    cd ../../
-fi
+#install_prefix="$amdtk_root"/extras/bin
+#if [[ ! -f "$install_prefix"/fstphicompose ]]; then
+#    mkdir -p "$install_prefix"
+#    cd "$amdtk_root"/tools/fstphicompose
+#    make PREFIX="$prefix"
+#    make install INSTALL_PREFIX="$install_prefix"
+#    cd ../../
+#fi
 
 # Create the path.sh file to use the newly created environment.
 cp $amdtk_root/path_template.sh $amdtk_root/extras/path.sh
