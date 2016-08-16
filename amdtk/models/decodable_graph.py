@@ -141,14 +141,10 @@ class UnigramDecodableGraph(DecodableGraph):
                     self._graph.add_arc(state, arc)
 
     def __distanceToFinalState(self, state):
-        if state == self._start_state:
-            return self.nstates
-        return (state % self.nstates) + 1
+        return ((state - 1) % self.nstates) + 1
 
     def __distanceToInitialState(self, state):
-        if state == self._start_state:
-            return self.nstates
-        return self.nstates - (state % self.nstates)
+        return self.nstates - ((state - 1) % self.nstates)
 
     def __consumeEpsilons(self, graph, arc):
         if arc.ilabel == 0:
@@ -168,14 +164,11 @@ class UnigramDecodableGraph(DecodableGraph):
             state_idx = self._state_index[state]
             log_alpha = log_alphas[frame_index - 1, state_idx]
 
-        # Get all the arcs to browse.
-        arcs = []
-        for arc in self._graph.arcs(state):
-            arcs += self.__consumeEpsilons(self._graph, arc)
-
         # Propagate the weight for each outgoing arcs.
-        for arc in arcs:
-            # Make sure the path is a valid paths.
+        for arc in self._graph.arcs(state):
+            # Make sure the path is a valid.
+            if arc.nextstate == self._end_state:
+                continue
             remaining_frame = len(llhs) - frame_index
             if self.__distanceToFinalState(arc.nextstate) > remaining_frame:
                 continue
@@ -202,28 +195,20 @@ class UnigramDecodableGraph(DecodableGraph):
 
     def __stepBackward(self, state, frame_index, log_betas, llhs,
                        active_states):
+        # Index of the current state.
+        state_idx = self._state_index[state]
 
-        # End of the recursion.
-        if frame_index == len(llhs) - 1:
-            log_beta = fst.Weight.One('log')
-        else:
-            # Index of the current state.
-            state_idx = self._state_index[state]
-
-            # Backward value up to the current state.
-            log_beta = log_betas[frame_index + 1, state_idx]
-
-        # Get all the arcs to browse.
-        arcs = []
-        for arc in self._r_graph.arcs(state):
-            arcs += self.__consumeEpsilons(self._r_graph, arc)
+        # Backward value up to the current state.
+        log_beta = log_betas[frame_index, state_idx]
 
         # Propagate the weight for each outgoing arcs.
-        for arc in arcs:
+        for arc in self._r_graph.arcs(state):
             assert arc.ilabel != 0, "Oops !"
 
-            # Make sure the path is a valid paths.
-            remaining_frame = frame_index + 1
+            # Make sure the path is a valid.
+            if arc.nextstate == self._start_state:
+                continue
+            remaining_frame = frame_index
             if self.__distanceToInitialState(arc.nextstate) > remaining_frame:
                 continue
 
@@ -232,17 +217,17 @@ class UnigramDecodableGraph(DecodableGraph):
 
             # Convert the acoustic weight into OpenFst weight.
             ac_weight = \
-                fst.Weight('log', -llhs[frame_index + 1, next_state_idx])
+                fst.Weight('log', -llhs[frame_index, state_idx])
 
             # Weight to add for this state.
             weight = fst.times(arc.weight, log_beta)
             weight = fst.times(weight, ac_weight)
 
-            if log_betas[frame_index, next_state_idx] is None:
-                log_betas[frame_index, next_state_idx] = weight
+            if log_betas[frame_index - 1, next_state_idx] is None:
+                log_betas[frame_index - 1, next_state_idx] = weight
             else:
-                current_weight = log_betas[frame_index, next_state_idx]
-                log_betas[frame_index, next_state_idx] = \
+                current_weight = log_betas[frame_index - 1, next_state_idx]
+                log_betas[frame_index - 1, next_state_idx] = \
                     fst.plus(current_weight, weight)
 
             # Add the state to the active state set.
@@ -318,14 +303,20 @@ class UnigramDecodableGraph(DecodableGraph):
         # forward recursion.
         log_betas = np.empty_like(llhs, dtype=object)
 
+        # Initialize the recurstion.
+        for state in self._final_states:
+            state_idx = self._state_index[state]
+            log_betas[-1, state_idx] = fst.Weight.One('log')
+
         # Starting point of the backward recursion.
-        active_states = set([self._final_state])
+        active_states = set(self._final_states)
 
         # Current frame index.
         frame_index = len(llhs) - 1
 
         # Backward recursion.
         while frame_index >= 0:
+            print('frame_index:', frame_index)
             # Current state from which to expand the backward recursion.
             states = list(active_states)
             for state in states:
