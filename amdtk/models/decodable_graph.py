@@ -37,8 +37,9 @@ class UnigramDecodableGraph(DecodableGraph):
 
     # ------------------------------------------------------------------
     # We override the pickling behavior of the object to be able to deal
-    # with OpenFst component. This is inefficient as we have to write
-    # the object on the disk but it avoid to modify the OpenFst API.
+    # with the OpenFst component. This is inefficient as we have to
+    # write the object on the disk but it avoid to modify the OpenFst
+    # API.
 
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -145,15 +146,6 @@ class UnigramDecodableGraph(DecodableGraph):
 
     def __distanceToInitialState(self, state):
         return self.nstates - ((state - 1) % self.nstates)
-
-    def __consumeEpsilons(self, graph, arc):
-        if arc.ilabel == 0:
-            arcs = []
-            for new_arc in graph.arcs(arc.nextstate):
-                arcs += self.__consumeEpsilons(graph, new_arc)
-            return arcs
-        else:
-            return [arc]
 
     def __stepForward(self, state, frame_index, log_alphas, llhs,
                       active_states):
