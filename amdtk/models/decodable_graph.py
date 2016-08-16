@@ -67,6 +67,7 @@ class UnigramDecodableGraph(DecodableGraph):
         newstate['_r_graph'] = fst.Fst.read(out.name)
 
         self.__dict__.update(newstate)
+
     # ------------------------------------------------------------------
 
     def __init__(self, nunits, nstates):
@@ -76,20 +77,19 @@ class UnigramDecodableGraph(DecodableGraph):
         # Create the fst.
         self._graph = fst.Fst('log')
 
-        # Set the initial/final state. For the unigram phone-loop the
-        # initial and final state are the same.
+        # Set the initial/final state.
         self._start_state = self._graph.add_state()
         self._graph.set_start(self._start_state)
-        self._final_state = self._start_state
-        self._graph.set_final(self._start_state)
+        self._end_state = self._graph.add_state()
+        self._graph.set_final(self._end_state)
 
         # Create the states of the graphs.
         for i in range(nunits * nstates):
             self._graph.add_state()
 
         # Define the possible initial and final states.
-        self._init_states = [self._start_state + 1]
-        self._final_states = [nstates]
+        self._init_states = [self._start_state + 2]
+        self._final_states = [self._start_state + nstates + 1]
         for i in range(1, nunits):
             self._final_states.append(self._final_states[i - 1] + nstates)
             self._init_states.append(self._final_states[-1] - nstates + 1)
@@ -98,7 +98,7 @@ class UnigramDecodableGraph(DecodableGraph):
         # forward-backward algorithm.
         self._state_index = {}
         for i in range(nunits * nstates):
-            self._state_index[i + 1] = i
+            self._state_index[i + 2] = i
 
         # Connect the graph's states.
         self.__connectStates()
@@ -115,11 +115,17 @@ class UnigramDecodableGraph(DecodableGraph):
             arc = fst.Arc(state, state, weight, state)
             self._graph.add_arc(self._start_state, arc)
 
-        # Connect all the final states to the ending state.
         for state in self._final_states:
-            arc = fst.Arc(self._start_state, self._start_state,
-                          fst.Weight.One('log'), self._start_state)
+            arc = fst.Arc(0, 0, fst.Weight.One('log'), self._end_state)
             self._graph.add_arc(state, arc)
+
+        # Connect all the final states to the initial states to complete
+        # the loop.
+        for final_state in self._final_states:
+            for init_state in self._init_states:
+                arc = fst.Arc(init_state, init_state, fst.Weight.One('log'),
+                              init_state)
+                self._graph.add_arc(final_state, arc)
 
         # HMM connections.
         for init_state in self._init_states:
@@ -199,20 +205,13 @@ class UnigramDecodableGraph(DecodableGraph):
 
         # End of the recursion.
         if frame_index == len(llhs) - 1:
-            # Add the next states to the active state set.
-            for arc in self._r_graph.arcs(state):
-                next_state_idx = self._state_index[arc.nextstate]
-                log_betas[frame_index, next_state_idx] = \
-                    fst.Weight.One('log')
-                active_states.add(arc.nextstate)
+            log_beta = fst.Weight.One('log')
+        else:
+            # Index of the current state.
+            state_idx = self._state_index[state]
 
-            return
-
-        # Index of the current state.
-        state_idx = self._state_index[state]
-
-        # Backward value up to the current state.
-        log_beta = log_betas[frame_index + 1, state_idx]
+            # Backward value up to the current state.
+            log_beta = log_betas[frame_index + 1, state_idx]
 
         # Get all the arcs to browse.
         arcs = []
@@ -221,6 +220,8 @@ class UnigramDecodableGraph(DecodableGraph):
 
         # Propagate the weight for each outgoing arcs.
         for arc in arcs:
+            assert arc.ilabel != 0, "Oops !"
+
             # Make sure the path is a valid paths.
             remaining_frame = frame_index + 1
             if self.__distanceToInitialState(arc.nextstate) > remaining_frame:
@@ -231,7 +232,7 @@ class UnigramDecodableGraph(DecodableGraph):
 
             # Convert the acoustic weight into OpenFst weight.
             ac_weight = \
-                fst.Weight('log', -llhs[frame_index + 1, state_idx])
+                fst.Weight('log', -llhs[frame_index + 1, next_state_idx])
 
             # Weight to add for this state.
             weight = fst.times(arc.weight, log_beta)
