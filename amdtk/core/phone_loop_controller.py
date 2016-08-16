@@ -32,39 +32,19 @@ def phoneLoopVbExpectation(model, X, Y=None):
 
     """
     # Evaluate the log-likelihood of the acoustic model.
-    gmm_E_log_p_X_given_W, gmm_log_P_Zs = model.evalAcousticModel(X)
+    am_llhs, gmm_log_P_Zs = model.evalAcousticModel(X)
 
-    # Evaluate the log-likelihood of the HMM states.
-    hmm_log_P_Z, log_alphas, log_betas = \
-        model.evalLanguageModel(gmm_E_log_p_X_given_W)
-
-    # log-likelihood of the sequence. We compute it to monitor the
-    # convergence of the training.
-    E_log_P_X = logsumexp(log_alphas[-1])
-
-    # Evaluate the probability of the latent variable of the inifinite
-    # mixture.
-    dim = model.nunits
-    dp_P_Z = np.exp(hmm_log_P_Z).reshape((X.shape[0], dim, -1)).sum(axis=2)
-
-
-    # Evaluate the statistics for the truncated DP.
-    tdp_stats = DirichletProcessStats(dp_P_Z)
+    # Forward-backward algorithm.
+    E_log_P_X, hmm_log_P_Z, unit_log_resps = model.forwardBackward(am_llhs)
 
     # If no other features are provided accumulate the stats on the 'X'.
     if Y is None:
         Y = X
 
-    # Evaluate the statistics of the GMMs.
-    gmm_stats = {}
-    gauss_stats = {}
-    for i in range(model.k):
-        log_weights = (hmm_log_P_Z[:, i] + gmm_log_P_Zs[i].T).T
-        weights = np.exp(log_weights)
-        gmm_stats[i] = MixtureStats(weights)
-        for j in range(model.components[i].k):
-            gauss_stats[(i, j)] = GaussianDiagCovStats(Y, weights[:, j])
-    return E_log_P_X, (tdp_stats, gmm_stats, gauss_stats)
+    stats = model.stats(Y, gmm_log_P_Zs, hmm_log_P_Z, unit_log_resps)
+
+    return E_log_P_X, stats
+
 
 def phoneLoopVb1BestExpectation(model, X, seq):
     """Estimate the expected value of the different latent variables of
@@ -128,7 +108,7 @@ def phoneLoopVb1BestExpectation(model, X, seq):
     # log-likelihood of the sequence. We compute it to monitor the
     # convergence of the training.
     E_log_P_X = logsumexp(log_alphas[-1])
-    
+
     # Evaluate the probability of the latent variable of the inifinite
     # mixture.
     dim = int(model.k/model.nstates)
@@ -166,7 +146,7 @@ def phoneLoopVbMaximization(model, stats):
         Tuple containing the Dirichlet process and HMM models. See
         :func:`create_model`.
     stats : dictionary
-        Accumulated statistics for earch component of the model. See 
+        Accumulated statistics for earch component of the model. See
         :func:`phoneLoopVbExpectation`.
 
     """
@@ -273,12 +253,12 @@ def phoneLoopForwardBackwardPosteriors(model, X, output_states=False):
     """
     # Evaluate the log-likelihood of the acoustic model.
     gmm_E_log_p_X_given_W, gmm_log_P_Zs = model.evalAcousticModel(X)
-    
+
     # Evaluate the log-likelihood of the HMM states.
     hmm_log_P_Z, log_alphas, log_betas = \
         model.evalLanguageModel(gmm_E_log_p_X_given_W)
     hmm_P_Z = np.exp(hmm_log_P_Z)
-    
+
     # Merge the inner states of the units to output only the units
     # posteriors.
     if not output_states:

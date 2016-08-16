@@ -6,10 +6,16 @@ interation with any AUD graph."""
 
 import abc
 import numpy as np
+from ..models import MixtureStats
+from ..models import GaussianDiagCovStats
 
 
 class AcousticModel(metaclass=abc.ABCMeta):
     """"Base class for any acoustic model."""
+
+    @abc.abstractproperty
+    def ngmms(self):
+        pass
 
     @abc.abstractmethod
     def evaluate(self, X):
@@ -28,6 +34,30 @@ class AcousticModel(metaclass=abc.ABCMeta):
         data : object
             Additional data that the model can re-use when accumulating
             the statistics.
+
+        """
+        pass
+
+    @abc.abstractmethod
+    def stats(self, X, am_log_resps, hmm_log_resps):
+        """Compute the sufficient statistics for the training..
+
+        Parameters
+        ----------
+        X : numpy.ndarray
+            Data matrix of N frames with D dimensions.
+        am_log_resps : nlist of umpy.ndarray
+            Responsibility for each gmm of the model.
+        hmm_log_resps : numpy.ndarray
+            Responsibility for each state of the hmm.
+
+        Returns
+        -------
+        E_log_P_X : float
+            The expected value of log probability of the sequence of
+            features.
+        resp_units ; numpy.ndarray
+            The responsibility for each unit per frame.
 
         """
         pass
@@ -68,3 +98,15 @@ class GMMAcousticModel(AcousticModel):
             log_resps.append(log_resp)
 
         return E_log_p_X_given_Z, log_resps
+
+    def stats(self, X, am_log_resps, hmm_log_resps):
+        # Evaluate the statistics of the GMMs.
+        gmm_stats = {}
+        gauss_stats = {}
+        for i, gmm in enumerate(self.gmms):
+            log_weights = (hmm_log_resps[:, i] + am_log_resps[i].T).T
+            weights = np.exp(log_weights)
+            gmm_stats[i] = MixtureStats(weights)
+            for j in range(gmm.k):
+                gauss_stats[(i, j)] = GaussianDiagCovStats(X, weights[:, j])
+        return gmm_stats, gauss_stats

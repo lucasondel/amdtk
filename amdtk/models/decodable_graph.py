@@ -308,7 +308,6 @@ class UnigramDecodableGraph(DecodableGraph):
 
         # Backward recursion.
         while frame_index >= 0:
-            print('frame_index:', frame_index)
             # Current state from which to expand the backward recursion.
             states = list(active_states)
             for state in states:

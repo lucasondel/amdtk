@@ -12,6 +12,7 @@
 import copy
 import numpy as np
 from scipy.misc import logsumexp
+from ..models import DirichletProcessStats
 
 
 class BayesianInfinitePhoneLoop(object):
@@ -45,7 +46,6 @@ class BayesianInfinitePhoneLoop(object):
         #   * update the decoding graph
         #   * update the GMMs' posterior
 
-
     def evalAcousticModel(self, X):
         """Compute the expected value of the log-likelihood of the
         acoustic model of the phone loop.
@@ -55,7 +55,7 @@ class BayesianInfinitePhoneLoop(object):
         X : numpy.ndarray
             Data matrix of N frames with D dimensions.
 
-        Returns
+        Returnsgmm_log_P_Zs
         -------
         E_llh : numpy.ndarray
             The expected value of the log-likelihood for each frame.
@@ -64,7 +64,7 @@ class BayesianInfinitePhoneLoop(object):
             the statistics.
 
         """
-        return self.acoustic_model.evaluate()
+        return self.acoustic_model.evaluate(X)
 
     def forwardBackward(self, am_llhs):
         """Forward-backward algorithm of the phone-loop.
@@ -98,7 +98,39 @@ class BayesianInfinitePhoneLoop(object):
         # convergence of the training.
         E_log_P_X = logsumexp(log_alphas[-1])
 
-        return E_log_P_X, resp_units
+        return E_log_P_X, log_P_Z, resp_units
+
+    def stats(self, X, am_log_resps, hmm_log_resps, unit_log_resps):
+        """Compute the sufficient statistics for the training..
+
+        Parameters
+        ----------
+        X : numpy.ndarray
+            Data matrix of N frames with D dimensions.
+        am_log_resps : nlist of umpy.ndarray
+            Responsibility for each gmm of the model.
+        hmm_log_resps : numpy.ndarray
+            Responsibility for each state of the hmm.
+        unit_log_resps : numpy.ndarray
+            Responsility for each unit of the model.
+
+        Returns
+        -------
+        E_log_P_X : float
+            The expected value of log probability of the sequence of
+            features.
+        resp_units ; numpy.ndarray
+            The responsibility for each unit per frame.
+
+        """
+        # Evaluate the statistics for the truncated DP.
+        tdp_stats = DirichletProcessStats(np.exp(unit_log_resps))
+
+        # Evaluate the statistics of the acoustic model.
+        gmm_stats, am_stats = self.acoustic_model.stats(X, am_log_resps,
+                                                        hmm_log_resps)
+
+        return tdp_stats, gmm_stats, am_stats
 
     def KLPosteriorPrior(self):
         """KL divergence between the posterior and the prior densities.
