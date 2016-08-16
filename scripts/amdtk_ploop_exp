@@ -22,8 +22,8 @@ def main():
     with open(args.model, 'rb') as f:
         model = pickle.load(f)
     X = amdtk.readHtk(args.feats)
-    if args.new_feats is None:
-        Y = amdtk.readHtk(args.feats)
+    if args.new_feats is not None:
+        Y = amdtk.readHtk(args.new_feats)
     else:
         Y = None
     E_log_p_X, stats = amdtk.phoneLoopVbExpectation(model, X, Y)
