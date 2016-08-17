@@ -22,31 +22,59 @@ class AcousticModel(metaclass=abc.ABCMeta):
 
         """
         self.name_model = {}
+        self.index_name = {}
         for i, name in enumerate(names):
             self.name_model[name] = gmms[i]
+            self.index_name[i] = name
+        self.name_index = {}
+        for i, name in self.index_name.items():
+            self.name_index[name] = i
         self.n_models = len(gmms)
 
     def evaluate(self, X):
         E_log_p_X_given_Z = np.zeros((X.shape[0], self.n_models))
         log_resps = []
-        index_name = {}
-        for i, name in enumerate(self.name_model):
-            index_name[i] = name
+        for i, name in self.index_name.items():
             gmm = self.name_model[name]
             llh, log_resp = gmm.expLogLikelihood(X)
             E_log_p_X_given_Z[:, i] = llh
             log_resps.append(log_resp)
 
-        return E_log_p_X_given_Z, log_resps, index_name
+        return E_log_p_X_given_Z, log_resps
 
-    def stats(self, X, hmm_log_resps, am_log_resps, index_name):
+    def stats(self, X, hmm_log_resps, am_log_resps):
         gmm_stats = {}
         gauss_stats = {}
-        for i, name in index_name.items():
+        for i, name in self.index_name.items():
             gmm = self.name_model[name]
             log_weights = (hmm_log_resps[:, i] + am_log_resps[i].T).T
             weights = np.exp(log_weights)
-            gmm_stats[i] = MixtureStats(weights)
+            gmm_stats[name] = MixtureStats(weights)
+            gauss_stats[name] = {}
             for j in range(gmm.k):
-                gauss_stats[(i, j)] = GaussianDiagCovStats(X, weights[:, j])
+                gauss_stats[name][j] = GaussianDiagCovStats(X, weights[:, j])
         return gmm_stats, gauss_stats
+
+    def KLPosteriorPrior(self):
+        """KL divergence between the posterior and the prior densities.
+
+        Returns:class:MixtureStats
+        -------
+        KL : float
+            KL divergence.
+
+        """
+        KL = 0
+        for name, gmm in self.name_model.items():
+            KL += gmm.KLPosteriorPrior()
+        return KL
+
+    def updatePosterior(self, gmm_stats, gauss_stats):
+        for name, stats in gmm_stats.items():
+            gmm = self.name_model[name]
+            gmm.updatePosterior(stats)
+
+        for name, data in gauss_stats.items():
+            gmm = self.name_model[name]
+            for j, stats in data.items():
+                gmm.components[j].updatePosterior(stats)

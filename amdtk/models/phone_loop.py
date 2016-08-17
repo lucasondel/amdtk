@@ -66,6 +66,37 @@ class BayesianInfinitePhoneLoop(object):
         """
         return self.acoustic_model.evaluate(X)
 
+    def forward(self, llhs):
+        name_index = self.acoustic_model.name_index
+        index_name = self.acoustic_model.index_name
+        log_alphas = llhs.copy()
+        log_alphas[0] += self.dgraph.logProbInit(index_name)
+
+        for t in range(1, len(llhs)):
+            for name in self.dgraph.names:
+                idx = self.acoustic_model.name_index[name]
+                log_trans = self.dgraph.logProbTransitions(name, name_index)
+                log_alphas[t, idx] += logsumexp(log_alphas[t-1] + log_trans)
+
+        return log_alphas
+
+    def backward(self, llhs):
+        name_index = self.acoustic_model.name_index
+        log_betas = np.zeros_like(llhs) - float('inf')
+        for name in self.dgraph.finalNames():
+            idx = name_index[name]
+            log_betas[-1, idx] = 0.
+
+        for t in reversed(range(llhs.shape[0]-1)):
+            for name in self.dgraph.names:
+                idx = self.acoustic_model.name_index[name]
+                log_trans = self.dgraph.logProbTransitions(name, name_index,
+                                                           incoming=False)
+                log_betas[t, idx] = logsumexp(log_betas[t+1] + log_trans +
+                                              llhs[t+1])
+
+        return log_betas
+
     def forwardBackward(self, am_llhs):
         """Forward-backward algorithm of the phone-loop.
 
@@ -84,13 +115,15 @@ class BayesianInfinitePhoneLoop(object):
 
         """
         # Compute the forward-backward algorithm.
-        log_alphas = self.dgraph.forward(am_llhs)
-        log_betas = self.dgraph.backward(am_llhs)
+        old_settings = np.seterr(divide='ignore')
+        log_alphas = self.forward(am_llhs)
+        log_betas = self.backward(am_llhs)
+        np.seterr(**old_settings)
         log_P_Z = log_alphas + log_betas
         log_P_Z = (log_P_Z.T - logsumexp(log_P_Z, axis=1)).T
 
         # Evaluate the responsibilities for each units.
-        dim = self.dgraph.nunits
+        dim = self.prior.truncation
         nframes = len(am_llhs)
         resp_units = np.exp(log_P_Z).reshape((nframes, dim, -1)).sum(axis=2)
 
@@ -100,7 +133,7 @@ class BayesianInfinitePhoneLoop(object):
 
         return E_log_P_X, log_P_Z, resp_units
 
-    def stats(self, X, am_log_resps, hmm_log_resps, unit_log_resps):
+    def stats(self, X, unit_log_resps, hmm_log_resps, am_log_resps):
         """Compute the sufficient statistics for the training..
 
         Parameters
@@ -127,10 +160,10 @@ class BayesianInfinitePhoneLoop(object):
         tdp_stats = DirichletProcessStats(np.exp(unit_log_resps))
 
         # Evaluate the statistics of the acoustic model.
-        gmm_stats, am_stats = self.acoustic_model.stats(X, am_log_resps,
-                                                        hmm_log_resps)
+        gmm_stats, gauss_stats = self.acoustic_model.stats(X, hmm_log_resps,
+                                                           am_log_resps)
 
-        return tdp_stats, gmm_stats, am_stats
+        return tdp_stats, gmm_stats, gauss_stats
 
     def KLPosteriorPrior(self):
         """KL divergence between the posterior and the prior densities.
@@ -141,12 +174,10 @@ class BayesianInfinitePhoneLoop(object):
             KL divergence.
 
         """
-        KL = 0
-        for gmm in self.components:
-            KL += gmm.KLPosteriorPrior()
-        return KL + self.posterior.KL(self.prior)
+        return self.acoustic_model.KLPosteriorPrior() + \
+            self.posterior.KL(self.prior)
 
-    def updatePosterior(self, tdp_stats):
+    def updatePosterior(self, tdp_stats, gmm_stats, gauss_stats):
         """Update the parameters of the posterior distribution according
         to the accumulated statistics.
 
@@ -157,4 +188,5 @@ class BayesianInfinitePhoneLoop(object):
 
         """
         self.posterior = self.prior.newPosterior(tdp_stats)
+        self.acoustic_model.updatePosterior(gmm_stats, gauss_stats)
         self.updateParams()

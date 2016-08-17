@@ -41,7 +41,7 @@ def phoneLoopVbExpectation(model, X, Y=None):
     if Y is None:
         Y = X
 
-    stats = model.stats(Y, gmm_log_P_Zs, hmm_log_P_Z, unit_log_resps)
+    stats = model.stats(Y, unit_log_resps, hmm_log_P_Z, gmm_log_P_Zs)
 
     return E_log_P_X, stats
 
@@ -151,15 +151,7 @@ def phoneLoopVbMaximization(model, stats):
 
     """
     # Update the Truncated Dirichlet Process.
-    model.updatePosterior(stats[0])
-
-    # Update GMMs.
-    for i in stats[1]:
-        model.components[i].updatePosterior(stats[1][i])
-
-    # Update the Gaussians.
-    for i, j in stats[2]:
-        model.components[i].components[j].updatePosterior(stats[2][(i, j)])
+    model.updatePosterior(stats[0], stats[1], stats[2])
 
 def phoneLoopDecode(model, X, output_states=False, lscale=0, lscale_full=0):
     """Label the segments using the Viterbi algorithm.

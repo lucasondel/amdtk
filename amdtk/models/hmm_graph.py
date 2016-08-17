@@ -83,6 +83,12 @@ class HmmGraph(object):
     def names(self):
         return list(self.name_states.keys())
 
+    def _computelogProbInitStates(self):
+        state_log_pi = 1 / len(self.init_states)
+        self._state_log_pi = {}
+        for state in self.init_states:
+            self._state_log_pi[state] = state_log_pi
+
     def _updateNameStatesMapping(self):
         self.name_states = {}
         for state in self.states:
@@ -98,13 +104,41 @@ class HmmGraph(object):
             for i, next_state in enumerate(state.next_states):
                 next_states.append(next_state)
                 weights[i] = state.next_states[next_state]
-            weights -= logsumexp(weights)
+            weights /= weights.sum()
             for i, next_state in enumerate(next_states):
                 state.next_states[next_state] = weights[i]
+                next_state.previous_states[state] = weights[i]
 
     def _prepare(self):
         self._updateNameStatesMapping()
         self._normalize()
+        self._computelogProbInitStates()
+
+    def logProbInit(self, index_name):
+        pi = np.zeros(len(index_name))
+        for i, name in index_name.items():
+            for state in self.name_states[name]:
+                if state in self.init_states:
+                    pi[i] += self._state_log_pi[state]
+        return np.log(pi)
+
+    def logProbTransitions(self, name, name_index, incoming=True):
+        prob = np.zeros(len(self.name_states))
+        for state in self.name_states[name]:
+            if incoming:
+                next_states = state.previous_states
+            else:
+                next_states = state.next_states
+            for next_state, weight in next_states.items():
+                idx = name_index[next_state.name]
+                prob[idx] += weight
+        return np.log(prob)
+
+    def finalNames(self):
+        final_names = set()
+        for state in self.final_states:
+            final_names.add(state.name)
+        return final_names
 
     def addState(self, name):
         state = State(name)
@@ -123,7 +157,7 @@ class HmmGraph(object):
     def isFinalState(self, state):
         return state in self.final_states
 
-    def addLink(self, state, next_state, weight=0.):
+    def addLink(self, state, next_state, weight=1.):
         state.addLink(next_state, weight)
 
     def addSilenceState(self):
