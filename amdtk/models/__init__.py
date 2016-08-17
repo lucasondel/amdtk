@@ -22,4 +22,5 @@ from .hpyp import HierarchicalPitmanYorProcess
 from .decodable_graph import UnigramDecodableGraph
 
 from .acoustic_model import AcousticModel
-from .acoustic_model import GMMAcousticModel
+
+from .hmm_graph import HmmGraph

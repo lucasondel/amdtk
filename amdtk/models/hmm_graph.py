@@ -79,6 +79,10 @@ class HmmGraph(object):
         self.models = []
         self.name_states = {}
 
+    @property
+    def names(self):
+        return list(self.name_states.keys())
+
     def _updateNameStatesMapping(self):
         self.name_states = {}
         for state in self.states:

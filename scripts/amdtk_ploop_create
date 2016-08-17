@@ -7,9 +7,9 @@ import pickle
 import numpy as np
 from amdtk.models import BayesianGaussianDiagCov
 from amdtk.models import BayesianMixture
-from amdtk.models import GMMAcousticModel
+from amdtk.models import AcousticModel
 from amdtk.models import TruncatedDirichletProcess
-from amdtk.models import UnigramDecodableGraph
+from amdtk.models import HmmGraph
 from amdtk.models import BayesianInfinitePhoneLoop
 
 
@@ -99,13 +99,13 @@ def main():
     g2 = np.zeros(args.truncation) + args.concentration
     tdp = TruncatedDirichletProcess(g1, g2)
 
-    # Initialize the acoustic model structure of the phone loop.
-    # ------------------------------------------------------------------
-    acoustic_model = GMMAcousticModel(args.truncation, args.nstates, gmms)
-
     # Create the decodable graph.
     # ------------------------------------------------------------------
-    dgraph = UnigramDecodableGraph(args.truncation, args.nstates)
+    dgraph = HmmGraph.standardPhoneLoop('a', args.truncation, args.nstates)
+
+    # Initialize the acoustic model structure of the phone loop.
+    # ------------------------------------------------------------------
+    acoustic_model = AcousticModel(dgraph.names, gmms)
 
     # Create the phone loop model.
     # ------------------------------------------------------------------
