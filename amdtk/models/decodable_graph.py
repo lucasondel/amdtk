@@ -3,9 +3,8 @@
 be used to discover acoustic units."""
 
 import abc
-import tempfile
 import numpy as np
-import pywrapfst as fst
+from .hmm_graph import HmmGraph
 
 
 class DecodableGraph(metaclass=abc.ABCMeta):
@@ -31,121 +30,49 @@ class DecodableGraph(metaclass=abc.ABCMeta):
 
 class UnigramDecodableGraph(DecodableGraph):
 
-    @property
-    def graph(self):
-        return self._graph
-
-    # ------------------------------------------------------------------
-    # We override the pickling behavior of the object to be able to deal
-    # with the OpenFst component. This is inefficient as we have to
-    # write the object on the disk but it avoid to modify the OpenFst
-    # API.
-
-    def __getstate__(self):
-        state = self.__dict__.copy()
-
-        out = tempfile.NamedTemporaryFile()
-        state['_graph'].write(out.name)
-        with open(out.name, 'rb') as f:
-            state['_graph'] = f.read()
-
-        out = tempfile.NamedTemporaryFile()
-        state['_r_graph'].write(out.name)
-        with open(out.name, 'rb') as f:
-            state['_r_graph'] = f.read()
-
-        return state
-
-    def __setstate__(self, newstate):
-        out = tempfile.NamedTemporaryFile()
-        with open(out.name, 'wb') as f:
-            f.write(newstate['_graph'])
-        newstate['_graph'] = fst.Fst.read(out.name)
-
-        out = tempfile.NamedTemporaryFile()
-        with open(out.name, 'wb') as f:
-            f.write(newstate['_r_graph'])
-        newstate['_r_graph'] = fst.Fst.read(out.name)
-
-        self.__dict__.update(newstate)
-
-    # ------------------------------------------------------------------
 
     def __init__(self, nunits, nstates):
         self.nunits = nunits
         self.nstates = nstates
 
-        # Create the fst.
-        self._graph = fst.Fst('log')
-
-        # Set the initial/final state.
-        self._start_state = self._graph.add_state()
-        self._graph.set_start(self._start_state)
-        self._end_state = self._graph.add_state()
-        self._graph.set_final(self._end_state)
+        # Create the Graph.
+        self._graph = HmmGraph()
 
         # Create the states of the graphs.
         for i in range(nunits * nstates):
-            self._graph.add_state()
-
-        # Define the possible initial and final states.
-        self._init_states = [self._start_state + 2]
-        self._final_states = [self._start_state + nstates + 1]
-        for i in range(1, nunits):
-            self._final_states.append(self._final_states[i - 1] + nstates)
-            self._init_states.append(self._final_states[-1] - nstates + 1)
+            state_id = self._graph.addState()
+            if state_id % nstates == 0:
+                self._graph.setInitState(state_id)
+            if nstates - (state_id % nstates) - 1 == 0:
+                self._graph.setFinalState(state_id)
 
         # Create the mapping state -> index that will be used during the
         # forward-backward algorithm.
         self._state_index = {}
         for i in range(nunits * nstates):
-            self._state_index[i + 2] = i
+            self._state_index[i] = i
 
         # Connect the graph's states.
         self.__connectStates()
 
-        # For the backward recursion we need the reversed graph.
-        self._r_graph = fst.reverse(self._graph, require_superinitial=False)
-
     def __connectStates(self):
         # Weight shared for all HMM transitions.
-        weight = fst.Weight('log', -np.log(.5))
-
-        # Connect all the initial states to the starting state.
-        for state in self._init_states:
-            arc = fst.Arc(state, state, weight, state)
-            self._graph.add_arc(self._start_state, arc)
-
-        for state in self._final_states:
-            arc = fst.Arc(0, 0, fst.Weight.One('log'), self._end_state)
-            self._graph.add_arc(state, arc)
+        weight = -np.log(.5)
 
         # Connect all the final states to the initial states to complete
         # the loop.
-        for final_state in self._final_states:
-            for init_state in self._init_states:
-                arc = fst.Arc(init_state, init_state, fst.Weight.One('log'),
-                              init_state)
-                self._graph.add_arc(final_state, arc)
+        for final_state in self._graph.final_states:
+            for init_state in self._graph.init_states:
+                self.graph.addLink(final_state, init_state, 0.)
 
         # HMM connections.
-        for init_state in self._init_states:
+        for init_state in self._graph.init_states:
             for state in range(init_state, init_state + self.nstates):
-                # Self loops.
-                arc = fst.Arc(state, state, weight, state)
-                self._graph.add_arc(state, arc)
+                self._graph.addLink(state, state, weight)
 
-                # State to state transition.
-                if state not in self._final_states:
+                if state not in self._graph.final_states:
                     next_state = state + 1
-                    arc = fst.Arc(next_state, next_state, weight, next_state)
-                    self._graph.add_arc(state, arc)
-
-    def __distanceToFinalState(self, state):
-        return ((state - 1) % self.nstates) + 1
-
-    def __distanceToInitialState(self, state):
-        return self.nstates - ((state - 1) % self.nstates)
+                    self._graph.addLink(state, next_state, weight)
 
     def __stepForward(self, state, frame_index, log_alphas, llhs,
                       active_states):
@@ -244,24 +171,27 @@ class UnigramDecodableGraph(DecodableGraph):
         """
         # Allocate a matrix where we will store the results of the
         # forward recursion.
-        log_alphas = np.empty_like(llhs, dtype=object)
+        log_alphas = np.zeros((len(llhs), len(self._graph.states)),
+                              dtype=float)
 
         # Starting point of the forward recursion.
-        active_states = set([self._start_state])
+        active_states = self._graph.init_states
 
         # Current frame index.
         frame_index = 0
 
         # Forward recursion.
-        while frame_index < len(llhs):
-            # Current state from which to expand the forward recursion.
-            states = list(active_states)
+        #for frame_idx in range(len(llhs)):
+        #    for state_id in active_states:
+        #        for next_state_id in :
 
-            for state in states:
-                active_states.remove(state)
-                self.__stepForward(state, frame_index, log_alphas, llhs,
-                                   active_states)
-            frame_index += 1
+#            # Current state from which to expand the forward recursion.
+#            states = list(active_states)
+#
+#            for state in states:
+#                active_states.remove(state)
+#                self.__stepForward(state, frame_index, log_alphas, llhs,
+#                                   active_states)
 
         # For debugging.
         retval = np.empty_like(log_alphas, dtype=float)

@@ -36,6 +36,7 @@ if [ ! -e "$out_dir/.done" ]; then
         --truncation "$truncation" \
         --nstates "$nstates" \
         --ncomponents "$ncomponents" \
+        --sil_ngauss 4 \
         "$out_dir/stats" "$out_dir/model.bin"
 
     date > "$out_dir/.done"

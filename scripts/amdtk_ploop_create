@@ -7,9 +7,6 @@ import pickle
 import numpy as np
 from amdtk.models import BayesianGaussianDiagCov
 from amdtk.models import BayesianMixture
-from amdtk.models import AcousticModel
-from amdtk.models import TruncatedDirichletProcess
-from amdtk.models import HmmGraph
 from amdtk.models import BayesianInfinitePhoneLoop
 
 
@@ -17,6 +14,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--seed', default=-1, type=int, help='value to seed '
                         'the random generators with')
+    parser.add_argument('--sil_ngauss', default=0, type=int,
+                        help='number of Gaussian for the silence model')
     parser.add_argument('--concentration', default=1, type=float,
                         help='concentration of the Dirichlet Process '
                         '(default: 1)')
@@ -58,10 +57,45 @@ def main():
     # ------------------------------------------------------------------
     b = args.b * stats['cov']
 
+    # Build the silence model
+    # ------------------------------------------------------------------
+    sil_gmm = None
+    if args.sil_ngauss > 0:
+        nunits = args.truncation - 1
+        gaussians = []
+        for k in range(args.ncomponents):
+
+            # Initialize the mean of the posterior distribution of
+            # the Gaussian by sampling a random value from a
+            # Gaussian mean and variance given by the statistics
+            # provided.
+            # ------------------------------------------------------
+            dc = np.diag(stats['cov'])
+            mu_n = np.random.multivariate_normal(stats['mean'], dc)
+
+            # Create the Gaussian.
+            # ------------------------------------------------------
+            gaussian = BayesianGaussianDiagCov(stats['mean'],
+                                               args.kappa,
+                                               args.a,
+                                               b,
+                                               mu_n,
+                                               args.kappa,
+                                               args.a,
+                                               b.copy())
+
+            gaussians.append(gaussian)
+
+        sil_gmm = BayesianMixture(args.alpha * np.ones(args.ncomponents),
+                                  gaussians)
+
+    else:
+        nunits = args.truncation
+
     # Initialize the GMMs.
     # ------------------------------------------------------------------
     gmms = []
-    for i in range(args.truncation):
+    for i in range(nunits):
         for j in range(args.nstates):
 
             # Initialize the set of Gaussian for the current GMM.
@@ -93,23 +127,13 @@ def main():
             gmms.append(BayesianMixture(args.alpha * np.ones(args.ncomponents),
                                         gaussians))
 
-    # Create the truncated Dirichlet Process prior for the phone loop.
-    # ------------------------------------------------------------------
-    g1 = np.ones(args.truncation)
-    g2 = np.zeros(args.truncation) + args.concentration
-    tdp = TruncatedDirichletProcess(g1, g2)
-
-    # Create the decodable graph.
-    # ------------------------------------------------------------------
-    dgraph = HmmGraph.standardPhoneLoop('a', args.truncation, args.nstates)
-
-    # Initialize the acoustic model structure of the phone loop.
-    # ------------------------------------------------------------------
-    acoustic_model = AcousticModel(dgraph.names, gmms)
-
     # Create the phone loop model.
     # ------------------------------------------------------------------
-    model = BayesianInfinitePhoneLoop(tdp, dgraph, acoustic_model)
+    model = BayesianInfinitePhoneLoop(args.truncation,
+                                      args.concentration,
+                                      args.nstates,
+                                      gmms,
+                                      silence_model=sil_gmm)
 
     # Dump the model on the disk.
     # ------------------------------------------------------------------

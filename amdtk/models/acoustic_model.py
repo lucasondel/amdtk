@@ -9,7 +9,7 @@ from ..models import GaussianDiagCovStats
 
 class AcousticModel(metaclass=abc.ABCMeta):
 
-    def __init__(self, names, gmms):
+    def __init__(self, parent_names, state_names, gmms):
         """Create GMMs acoustic model.
 
         Parameters
@@ -23,12 +23,16 @@ class AcousticModel(metaclass=abc.ABCMeta):
         """
         self.name_model = {}
         self.index_name = {}
-        for i, name in enumerate(names):
+        self.name_index = {}
+        self.parent_name_indices = {}
+        for i, name in enumerate(state_names):
             self.name_model[name] = gmms[i]
             self.index_name[i] = name
-        self.name_index = {}
-        for i, name in self.index_name.items():
             self.name_index[name] = i
+            try:
+                self.parent_name_indices[parent_names[i]].append(i)
+            except KeyError:
+                self.parent_name_indices[parent_names[i]] = [i]
         self.n_models = len(gmms)
 
     def evaluate(self, X):
