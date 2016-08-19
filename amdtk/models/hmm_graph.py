@@ -381,7 +381,7 @@ class HmmGraph(object):
                 log_omegas[t, idx1] = np.max(hypothesis)
 
         final_idx = [self.states.index(state) for state in self.final_states]
-        path_idx = [final_idx[np.argmax(log_omegas[final_idx])]]
+        path_idx = [final_idx[np.argmax(log_omegas[-1, final_idx])]]
         for i in reversed(range(1, len(llhs))):
             path_idx.insert(0, backtrack[i, path_idx[0]])
 
@@ -468,35 +468,27 @@ class HmmGraph(object):
         state.addLink(next_state, weight)
 
     def addSilenceState(self, name='sil'):
-        sil_state1 = self.selfLoop(name)
-        sil_state2 = self.selfLoop(name)
-        sil_state3 = self.selfLoop(name)
-        self.states += sil_state1.states
-        self.id_state = {**self.id_state, **sil_state1.id_state}
-        self.states += sil_state2.states
-        self.id_state = {**self.id_state, **sil_state2.id_state}
-        self.states += sil_state3.states
-        self.id_state = {**self.id_state, **sil_state3.id_state}
+        """Add a silence state to the HMM.
 
-        self.init_states += sil_state3.init_states
-        for state in self.final_states:
-            for next_state in sil_state3.states:
-                self.addLink(state, next_state)
-        for state in sil_state3.final_states:
-            for next_state in self.init_states:
-                self.addLink(state, next_state)
-        self.final_states += sil_state3.init_states
+        We force the HMM to start and to finish in the silence state.
 
-        for state in sil_state1.states:
-            for next_state in self.init_states:
-                self.addLink(state, next_state)
+        Parameters
+        ----------
+        name : str
+            Name of the state.
+
+        """
+        sil_model = self.selfLoop(name)
+        self.states += sil_model.states
+        self.id_state = {**self.id_state, **sil_model.id_state}
+        sil_state = sil_model.states[0]
 
         for state in self.final_states:
-            for next_state in sil_state2.init_states:
-                self.addLink(state, next_state)
-
-        self.init_states = sil_state1.init_states
-        self.final_states = sil_state2.final_states
+            self.addLink(state, sil_state)
+        for state in self.init_states:
+            self.addLink(sil_state, state)
+        self.init_states = [sil_state]
+        self.final_states = [sil_state]
 
         self._prepare()
 
