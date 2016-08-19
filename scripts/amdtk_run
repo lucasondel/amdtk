@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"""run a list of job"""
+"""Run a list of job on the parallel environment."""
 
 import argparse
 import amdtk
@@ -19,10 +19,19 @@ def main():
     parser.add_argument('outdir', help='the output directory')
     args = parser.parse_args()
 
+    # Retrieve the parallel environment.
     env = amdtk.ParallelEnv.getEnvironment()
+
+    # Prepare the directory structure.
     env.prepareOutputDirectory(args.outdir)
+
+    # Estimate the repartition of the load per job.
     env.computeTaskLoad(args.list, args.ntasks)
+
+    # Prepare the script to be executed in the parallel environment.
     env.prepareScript(args.name, args.cmd, args.options, args.profile)
+
+    # Run the jobs.
     failed = env.run()
 
     if failed > 0:

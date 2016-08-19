@@ -21,11 +21,18 @@ def main():
     parser.add_argument('out', help='labels in a HTK label file')
     args = parser.parse_args()
 
+    # Load the unit-loop model.
     with open(args.model, 'rb') as f:
         model = pickle.load(f)
+
+    # Load the features.
     X, infos = amdtk.readHtk(args.feats, infos=True)
-    mlf_data = []
+
+    # Decode the utterance with the unit-loop model.
     path = amdtk.phoneLoopDecode(model, X, output_states=args.hmm_states)
+
+    # Convert the best-path to HTK label data structure.
+    mlf_data = []
     previous_state = path[0]
     start = 0
     for i, state in enumerate(path[1:]):
@@ -34,6 +41,8 @@ def main():
             previous_state = state
             start = i+1
     mlf_data.append((previous_state, start, i+2, None, None))
+
+    # Write the best-path alignment as a HTK label file.
     amdtk.writeHtkLabels(args.out, mlf_data, infos[1])
 
 if __name__ == '__main__':

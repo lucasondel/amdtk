@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"""Create and initialize a new phone loop model."""
+"""Create and initialize a new unit-loop model."""
 
 import argparse
 import pickle
@@ -40,7 +40,6 @@ def main():
     args = parser.parse_args()
 
     # Seed the random generators if requested.
-    # ------------------------------------------------------------------
     if args.seed > 0:
         import numpy
         import random
@@ -48,17 +47,14 @@ def main():
         random.seed(args.seed)
 
     # Load the stats of the data for initializing the Gaussians.
-    # ------------------------------------------------------------------
     with open(args.stats, 'rb') as f:
         stats = pickle.load(f)
 
     # Hyper-parameters for the Gamma distribution is computed from the
     # variance of the data.
-    # ------------------------------------------------------------------
     b = args.b * stats['cov']
 
-    # Build the silence model
-    # ------------------------------------------------------------------
+    # Build the silence model if requested.
     sil_gmm = None
     if args.sil_ngauss > 0:
         nunits = args.truncation - 1
@@ -69,12 +65,10 @@ def main():
             # the Gaussian by sampling a random value from a
             # Gaussian mean and variance given by the statistics
             # provided.
-            # ------------------------------------------------------
             dc = np.diag(stats['cov'])
             mu_n = np.random.multivariate_normal(stats['mean'], dc)
 
             # Create the Gaussian.
-            # ------------------------------------------------------
             gaussian = BayesianGaussianDiagCov(stats['mean'],
                                                args.kappa,
                                                args.a,
@@ -93,13 +87,11 @@ def main():
         nunits = args.truncation
 
     # Initialize the GMMs.
-    # ------------------------------------------------------------------
     gmms = []
     for i in range(nunits):
         for j in range(args.nstates):
 
             # Initialize the set of Gaussian for the current GMM.
-            # ----------------------------------------------------------
             gaussians = []
             for k in range(args.ncomponents):
 
@@ -107,12 +99,10 @@ def main():
                 # the Gaussian by sampling a random value from a
                 # Gaussian mean and variance given by the statistics
                 # provided.
-                # ------------------------------------------------------
                 dc = np.diag(stats['cov'])
                 mu_n = np.random.multivariate_normal(stats['mean'], dc)
 
                 # Create the Gaussian.
-                # ------------------------------------------------------
                 gaussian = BayesianGaussianDiagCov(stats['mean'],
                                                    args.kappa,
                                                    args.a,
@@ -128,7 +118,6 @@ def main():
                                         gaussians))
 
     # Create the phone loop model.
-    # ------------------------------------------------------------------
     model = BayesianInfinitePhoneLoop(args.truncation,
                                       args.concentration,
                                       args.nstates,
@@ -136,7 +125,6 @@ def main():
                                       silence_model=sil_gmm)
 
     # Dump the model on the disk.
-    # ------------------------------------------------------------------
     with open(args.output, 'wb') as f:
         pickle.dump(model, f)
 
