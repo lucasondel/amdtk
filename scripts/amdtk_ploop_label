@@ -25,17 +25,15 @@ def main():
         model = pickle.load(f)
     X, infos = amdtk.readHtk(args.feats, infos=True)
     mlf_data = []
-    path = amdtk.phoneLoopDecode(model, X, output_states=args.hmm_states,
-                                 lscale=args.lscale,
-                                 lscale_full=args.lscale_full)
+    path = amdtk.phoneLoopDecode(model, X, output_states=args.hmm_states)
     previous_state = path[0]
     start = 0
     for i, state in enumerate(path[1:]):
         if state != previous_state:
-            mlf_data.append(('a'+str(previous_state), start, i+1, None, None))
+            mlf_data.append((previous_state, start, i+1, None, None))
             previous_state = state
             start = i+1
-    mlf_data.append(('a'+str(previous_state), start, i+1, None, None))
+    mlf_data.append((previous_state, start, i+2, None, None))
     amdtk.writeHtkLabels(args.out, mlf_data, infos[1])
 
 if __name__ == '__main__':

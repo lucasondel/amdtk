@@ -1,7 +1,6 @@
 
 """Set of operations for training and using the  Bayesian phone-loop."""
 
-import bisect
 import numpy as np
 from scipy.misc import logsumexp
 from ..models import DirichletProcessStats
@@ -67,9 +66,6 @@ def phoneLoopVb1BestExpectation(model, X, seq):
         update the parameters.
 
     """
-    #import pdb
-    #pdb.set_trace()
-
     # Save tthe total number of component per GMM and the total number
     # of units in the phone loop model.
     ncomponents = model.ncomponents
@@ -120,7 +116,7 @@ def phoneLoopVb1BestExpectation(model, X, seq):
         resp[idx] += dp_P_Z[i]
 
     # Evaluate the statistics for the truncated DP.
-    tdp_stats = DirichletProcessStats(resp[:,np.newaxis])
+    tdp_stats = DirichletProcessStats(resp[:, np.newaxis])
 
     # Evaluate the statistics of the GMMs.
     gmm_stats = {}
@@ -153,7 +149,8 @@ def phoneLoopVbMaximization(model, stats):
     # Update the Truncated Dirichlet Process.
     model.updatePosterior(stats[0], stats[1], stats[2])
 
-def phoneLoopDecode(model, X, output_states=False, lscale=0, lscale_full=0):
+
+def phoneLoopDecode(model, X, output_states=False):
     """Label the segments using the Viterbi algorithm.
 
     Parameters
@@ -181,12 +178,7 @@ def phoneLoopDecode(model, X, output_states=False, lscale=0, lscale_full=0):
     gmm_E_log_p_X_given_W, gmm_log_P_Zs = model.evalAcousticModel(X)
 
     # Evaluate the log-likelihood of the HMM states.
-    path = model.viterbi(gmm_E_log_p_X_given_W)
-
-    # Merge the inner states of the units to output only the units
-    # transition.
-    if not output_states:
-        path = [bisect.bisect(model.init_states, state) for state in path]
+    path = model.viterbi(gmm_E_log_p_X_given_W, output_states)
 
     return path
 
@@ -225,6 +217,7 @@ def phoneLoopPosteriors(model, X, output_states=False):
 
     return gmm_E_log_P_Z
 
+
 def phoneLoopForwardBackwardPosteriors(model, X, output_states=False):
     """Compute the hmm states posteriors.
 
@@ -258,4 +251,3 @@ def phoneLoopForwardBackwardPosteriors(model, X, output_states=False):
         hmm_P_Z = hmm_P_Z.sum(axis=2)
 
     return hmm_P_Z
-
