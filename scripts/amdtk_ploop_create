@@ -1,9 +1,12 @@
 #!/usr/bin/env python
 
-"""Create and initialize a new phone loop model."""
+"""Create and initialize a new unit-loop model."""
 
 import argparse
 import pickle
+import numpy as np
+from amdtk.models import BayesianGaussianDiagCov
+from amdtk.models import BayesianMixture
 from amdtk.models import BayesianInfinitePhoneLoop
 
 
@@ -11,14 +14,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--seed', default=-1, type=int, help='value to seed '
                         'the random generators with')
+    parser.add_argument('--sil_ngauss', default=0, type=int,
+                        help='number of Gaussian for the silence model')
     parser.add_argument('--concentration', default=1, type=float,
                         help='concentration of the Dirichlet Process '
                         '(default: 1)')
     parser.add_argument('--truncation', default=50, type=int,
                         help='truncation of the Dirichlet process '
                         '(default: 50)')
-    parser.add_argument('--eta', default=1, type=float, help='hyper-parameter '
-                        'for the HMM transition (default: 1)')
     parser.add_argument('--nstates', default=1, type=int, help='number of '
                         'states per HMM (default: 1)')
     parser.add_argument('--ncomponents', default=1, type=int, help='number of '
@@ -36,21 +39,92 @@ def main():
     parser.add_argument('output', help='the created model')
     args = parser.parse_args()
 
+    # Seed the random generators if requested.
     if args.seed > 0:
         import numpy
         import random
         numpy.random.seed(args.seed)
         random.seed(args.seed)
 
+    # Load the stats of the data for initializing the Gaussians.
     with open(args.stats, 'rb') as f:
         stats = pickle.load(f)
 
-    model = BayesianInfinitePhoneLoop(args.truncation, args.concentration,
-                                      args.eta, args.nstates, args.alpha,
-                                      args.ncomponents, stats['mean'],
-                                      args.kappa, args.a, args.b*stats['cov'],
-                                      stats['mean'], stats['cov'])
+    # Hyper-parameters for the Gamma distribution is computed from the
+    # variance of the data.
+    b = args.b * stats['cov']
 
+    # Build the silence model if requested.
+    sil_gmm = None
+    if args.sil_ngauss > 0:
+        nunits = args.truncation - 1
+        gaussians = []
+        for k in range(args.ncomponents):
+
+            # Initialize the mean of the posterior distribution of
+            # the Gaussian by sampling a random value from a
+            # Gaussian mean and variance given by the statistics
+            # provided.
+            dc = np.diag(stats['cov'])
+            mu_n = np.random.multivariate_normal(stats['mean'], dc)
+
+            # Create the Gaussian.
+            gaussian = BayesianGaussianDiagCov(stats['mean'],
+                                               args.kappa,
+                                               args.a,
+                                               b,
+                                               mu_n,
+                                               args.kappa,
+                                               args.a,
+                                               b.copy())
+
+            gaussians.append(gaussian)
+
+        sil_gmm = BayesianMixture(args.alpha * np.ones(args.ncomponents),
+                                  gaussians)
+
+    else:
+        nunits = args.truncation
+
+    # Initialize the GMMs.
+    gmms = []
+    for i in range(nunits):
+        for j in range(args.nstates):
+
+            # Initialize the set of Gaussian for the current GMM.
+            gaussians = []
+            for k in range(args.ncomponents):
+
+                # Initialize the mean of the posterior distribution of
+                # the Gaussian by sampling a random value from a
+                # Gaussian mean and variance given by the statistics
+                # provided.
+                dc = np.diag(stats['cov'])
+                mu_n = np.random.multivariate_normal(stats['mean'], dc)
+
+                # Create the Gaussian.
+                gaussian = BayesianGaussianDiagCov(stats['mean'],
+                                                   args.kappa,
+                                                   args.a,
+                                                   b,
+                                                   mu_n,
+                                                   args.kappa,
+                                                   args.a,
+                                                   b.copy())
+
+                gaussians.append(gaussian)
+
+            gmms.append(BayesianMixture(args.alpha * np.ones(args.ncomponents),
+                                        gaussians))
+
+    # Create the phone loop model.
+    model = BayesianInfinitePhoneLoop(args.truncation,
+                                      args.concentration,
+                                      args.nstates,
+                                      gmms,
+                                      silence_model=sil_gmm)
+
+    # Dump the model on the disk.
     with open(args.output, 'wb') as f:
         pickle.dump(model, f)
 

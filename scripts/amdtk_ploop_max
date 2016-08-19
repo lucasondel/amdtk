@@ -9,20 +9,7 @@ import pickle
 import amdtk
 
 
-def main(model, stats, output):
-    model = pickle.load(model)
-    E_log_p_X, stats = pickle.load(stats)
-    amdtk.phoneLoopVbMaximization(model, stats)
-
-    import numpy as np
-    np.seterr(all='raise')
-
-    # Print the lower bound of log-likelihood
-    print(E_log_p_X - model.KLPosteriorPrior())
-
-    pickle.dump(model, output)
-
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('model', type=argparse.FileType('rb'),
                         help='model to maximize')
@@ -31,6 +18,23 @@ if __name__ == '__main__':
     parser.add_argument('output', type=argparse.FileType('wb'),
                         help='the updated model')
     args = parser.parse_args()
-    main(args.model, args.stats, args.output)
+
+    # load the model.
+    model = pickle.load(args.model)
+
+    # Load the sufficient statistics.
+    E_log_p_X, stats = pickle.load(args.stats)
+
+    # VB-maximization step.
+    amdtk.phoneLoopVbMaximization(model, stats)
+
+    # Print the lower bound of log-likelihood.
+    print(E_log_p_X - model.KLPosteriorPrior())
+
+    # Dump the updated model on the disk.
+    pickle.dump(model, args.output)
+
+if __name__ == '__main__':
+    main()
 else:
     raise ImportError('this script cannot be imported')

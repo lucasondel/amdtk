@@ -76,6 +76,10 @@ class TruncatedDirichletProcess(object):
         self.g1 = g1
         self.g2 = g2
 
+    @property
+    def truncation(self):
+        return len(self.g1)
+
     def expLogPi(self):
         """Expected value of the log of the weights of the DP.
 

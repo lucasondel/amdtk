@@ -1,7 +1,6 @@
 
 """Set of operations for training and using the  Bayesian phone-loop."""
 
-import bisect
 import numpy as np
 from scipy.misc import logsumexp
 from ..models import DirichletProcessStats
@@ -32,39 +31,19 @@ def phoneLoopVbExpectation(model, X, Y=None):
 
     """
     # Evaluate the log-likelihood of the acoustic model.
-    gmm_E_log_p_X_given_W, gmm_log_P_Zs = model.evalAcousticModel(X)
+    am_llhs, gmm_log_P_Zs = model.evalAcousticModel(X)
 
-    # Evaluate the log-likelihood of the HMM states.
-    hmm_log_P_Z, log_alphas, log_betas = \
-        model.evalLanguageModel(gmm_E_log_p_X_given_W)
-
-    # log-likelihood of the sequence. We compute it to monitor the
-    # convergence of the training.
-    E_log_P_X = logsumexp(log_alphas[-1])
-
-    # Evaluate the probability of the latent variable of the inifinite
-    # mixture.
-    dim = model.nunits
-    dp_P_Z = np.exp(hmm_log_P_Z).reshape((X.shape[0], dim, -1)).sum(axis=2)
-
-
-    # Evaluate the statistics for the truncated DP.
-    tdp_stats = DirichletProcessStats(dp_P_Z)
+    # Forward-backward algorithm.
+    E_log_P_X, hmm_log_P_Z, unit_log_resps = model.forwardBackward(am_llhs)
 
     # If no other features are provided accumulate the stats on the 'X'.
     if Y is None:
         Y = X
 
-    # Evaluate the statistics of the GMMs.
-    gmm_stats = {}
-    gauss_stats = {}
-    for i in range(model.k):
-        log_weights = (hmm_log_P_Z[:, i] + gmm_log_P_Zs[i].T).T
-        weights = np.exp(log_weights)
-        gmm_stats[i] = MixtureStats(weights)
-        for j in range(model.components[i].k):
-            gauss_stats[(i, j)] = GaussianDiagCovStats(Y, weights[:, j])
-    return E_log_P_X, (tdp_stats, gmm_stats, gauss_stats)
+    stats = model.stats(Y, unit_log_resps, hmm_log_P_Z, gmm_log_P_Zs)
+
+    return E_log_P_X, stats
+
 
 def phoneLoopVb1BestExpectation(model, X, seq):
     """Estimate the expected value of the different latent variables of
@@ -87,9 +66,6 @@ def phoneLoopVb1BestExpectation(model, X, seq):
         update the parameters.
 
     """
-    #import pdb
-    #pdb.set_trace()
-
     # Save tthe total number of component per GMM and the total number
     # of units in the phone loop model.
     ncomponents = model.ncomponents
@@ -128,7 +104,7 @@ def phoneLoopVb1BestExpectation(model, X, seq):
     # log-likelihood of the sequence. We compute it to monitor the
     # convergence of the training.
     E_log_P_X = logsumexp(log_alphas[-1])
-    
+
     # Evaluate the probability of the latent variable of the inifinite
     # mixture.
     dim = int(model.k/model.nstates)
@@ -140,7 +116,7 @@ def phoneLoopVb1BestExpectation(model, X, seq):
         resp[idx] += dp_P_Z[i]
 
     # Evaluate the statistics for the truncated DP.
-    tdp_stats = DirichletProcessStats(resp[:,np.newaxis])
+    tdp_stats = DirichletProcessStats(resp[:, np.newaxis])
 
     # Evaluate the statistics of the GMMs.
     gmm_stats = {}
@@ -166,22 +142,15 @@ def phoneLoopVbMaximization(model, stats):
         Tuple containing the Dirichlet process and HMM models. See
         :func:`create_model`.
     stats : dictionary
-        Accumulated statistics for earch component of the model. See 
+        Accumulated statistics for earch component of the model. See
         :func:`phoneLoopVbExpectation`.
 
     """
     # Update the Truncated Dirichlet Process.
-    model.updatePosterior(stats[0])
+    model.updatePosterior(stats[0], stats[1], stats[2])
 
-    # Update GMMs.
-    for i in stats[1]:
-        model.components[i].updatePosterior(stats[1][i])
 
-    # Update the Gaussians.
-    for i, j in stats[2]:
-        model.components[i].components[j].updatePosterior(stats[2][(i, j)])
-
-def phoneLoopDecode(model, X, output_states=False, lscale=0, lscale_full=0):
+def phoneLoopDecode(model, X, output_states=False):
     """Label the segments using the Viterbi algorithm.
 
     Parameters
@@ -209,12 +178,7 @@ def phoneLoopDecode(model, X, output_states=False, lscale=0, lscale_full=0):
     gmm_E_log_p_X_given_W, gmm_log_P_Zs = model.evalAcousticModel(X)
 
     # Evaluate the log-likelihood of the HMM states.
-    path = model.viterbi(gmm_E_log_p_X_given_W)
-
-    # Merge the inner states of the units to output only the units
-    # transition.
-    if not output_states:
-        path = [bisect.bisect(model.init_states, state) for state in path]
+    path = model.viterbi(gmm_E_log_p_X_given_W, output_states)
 
     return path
 
@@ -253,6 +217,7 @@ def phoneLoopPosteriors(model, X, output_states=False):
 
     return gmm_E_log_P_Z
 
+
 def phoneLoopForwardBackwardPosteriors(model, X, output_states=False):
     """Compute the hmm states posteriors.
 
@@ -273,12 +238,12 @@ def phoneLoopForwardBackwardPosteriors(model, X, output_states=False):
     """
     # Evaluate the log-likelihood of the acoustic model.
     gmm_E_log_p_X_given_W, gmm_log_P_Zs = model.evalAcousticModel(X)
-    
+
     # Evaluate the log-likelihood of the HMM states.
     hmm_log_P_Z, log_alphas, log_betas = \
         model.evalLanguageModel(gmm_E_log_p_X_given_W)
     hmm_P_Z = np.exp(hmm_log_P_Z)
-    
+
     # Merge the inner states of the units to output only the units
     # posteriors.
     if not output_states:
@@ -286,4 +251,3 @@ def phoneLoopForwardBackwardPosteriors(model, X, output_states=False):
         hmm_P_Z = hmm_P_Z.sum(axis=2)
 
     return hmm_P_Z
-

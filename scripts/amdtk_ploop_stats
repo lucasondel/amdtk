@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 
 """Estimate the statistics of the data set. Those statistics are needed
-for the definition of the hyper-parameters of the Bayesian phone loop
-model.
+for the initialziation the Bayesian unit-loop model.
 """
 
 import argparse
@@ -20,6 +19,8 @@ def main():
     mean = None
     cov = None
     count = 0
+
+    # Accumuate data from all the given features files.
     with open(args.featlist, 'r') as f:
         for line in f:
             path = line.strip()
@@ -30,9 +31,13 @@ def main():
             mean += X.sum(axis=0)
             cov += (X**2).sum(axis=0)
             count += X.shape[0]
+
+    # Estimate the statistics.
     mean = mean/count
     cov = cov/count - mean**2
     stats = {'mean': mean, 'cov': cov}
+
+    # Dump the stats on the disk.
     with open(args.output, 'wb') as f:
         pickle.dump(stats, f)
 

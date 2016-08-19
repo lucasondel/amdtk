@@ -5,7 +5,6 @@
 import argparse
 import pickle
 import amdtk
-from amdtk.models import HierarchicalPitmanYorProcess
 
 
 def main():
@@ -34,14 +33,14 @@ def main():
     with open(args.lm, "rb") as f:
         model = pickle.load(f)
 
-    # Prepare the texts. 
+    # Prepare the texts.
     with open(args.text1, 'r') as f:
         data_text = f.readlines()
     data1_int = amdtk.prepareText(data_text, model.vocab, tokenize=tokenizer)
     with open(args.text2, 'r') as f:
         data_text = f.readlines()
     data2_int = amdtk.prepareText(data_text, model.vocab, tokenize=tokenizer)
-    
+
     amdtk.resampleNgramLM(model, data1_int, data2_int)
     llh = amdtk.NgramLMLogLikelihood(model, data2_int)
     print("log-likelihood:", llh)

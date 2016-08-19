@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
-"""Estimate the unit posteriors for each frame of the utterance."""
+"""Compute the unit alignment posteriors from the Forward-Backward
+algorithm."""
 
 import argparse
 import pickle
 import amdtk
-from numpy import sqrt, log
 
 
 def main():
@@ -17,13 +17,18 @@ def main():
     parser.add_argument('out', help='HTK binary file')
     args = parser.parse_args()
 
+    # Load the unit-loop model.
     with open(args.model, 'rb') as f:
         model = pickle.load(f)
 
+    # Load the features.
     X, infos = amdtk.readHtk(args.feats, infos=True)
-    p = amdtk.phoneLoopForwardBackwardPosteriors(model, X, 
-		output_states=args.hmm_states)
 
+    # Compute the forward-backward per-frame posteriors.
+    p = amdtk.phoneLoopForwardBackwardPosteriors(model, X,
+                                                 output_states=args.hmm_states)
+
+    # Dump the posteriors on the disk.
     amdtk.writeHtk(args.out, p, infos[1])
 
 if __name__ == '__main__':

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"""Estimate the unit posteriors for each frame of the utterance."""
+"""Compute the per-frame state posteriors (without forward-backward)."""
 
 import argparse
 import pickle
@@ -19,15 +19,21 @@ def main():
     parser.add_argument('out', help='HTK binary file')
     args = parser.parse_args()
 
+    # Load the unit-loop model.
     with open(args.model, 'rb') as f:
         model = pickle.load(f)
 
+    # Load the features.
     X, infos = amdtk.readHtk(args.feats, infos=True)
+
+    # Compute GMMs posteriors.
     p = amdtk.phoneLoopPosteriors(model, X, output_states=args.hmm_states)
 
+    # Dirty trick to use these posterior with HTK later on.
     if args.htk_trick:
         p = sqrt(-2 * log(p.clip(min=1e-10)))
 
+    # Dump the posteriors on the disk.
     amdtk.writeHtk(args.out, p, infos[1])
 
 if __name__ == '__main__':
