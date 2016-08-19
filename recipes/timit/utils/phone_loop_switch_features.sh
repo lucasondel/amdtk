@@ -4,15 +4,16 @@
 # Initialize a phone loop model on a new set of features.
 #
 
-if [ $# -ne 4 ]; then
-    echo "usage: $0 <setup.sh> <model_dir> <new_fea_dir> <out_dir>"
+if [ $# -ne 5 ]; then
+    echo "usage: $0 <setup.sh> <model_dir> <new_fea_dir> <new_model_dir> <out_dir>"
     exit 1
 fi
 
 setup="$1"
 model="$2/model.bin"
 new_fea_dir=$3
-out_dir="$4"
+new_model="$4/model.bin"
+out_dir="$5"
 
 source $setup || exit 1
 
@@ -40,7 +41,7 @@ if [ ! -e $out_dir/.done ]; then
 
     # VB M-step: from the sufficient statistics we update the
     # parameters of the posteriors.
-    llh=$(amdtk_ploop_max "$model" \
+    llh=$(amdtk_ploop_max "$new_model" \
         "$out_dir/total_acc_stats" \
         "$out_dir/model.bin" || exit 1)
 

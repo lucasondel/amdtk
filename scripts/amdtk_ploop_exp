@@ -25,10 +25,8 @@ def main():
 
     # Load the features for the alignment.
     X = amdtk.readHtk(args.feats)
-
-    # Eventually, load another set of features for the accumulation.
-    if args.new_feats is None:
-        Y = amdtk.readHtk(args.feats)
+    if args.new_feats is not None:
+        Y = amdtk.readHtk(args.new_feats)
     else:
         Y = None
 
