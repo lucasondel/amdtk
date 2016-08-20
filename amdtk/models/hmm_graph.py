@@ -368,9 +368,9 @@ class HmmGraph(object):
         omega = llhs[0] + self._log_pi 
         for t in range(1, llhs.shape[0]):
             hypothesis = omega + self._log_A.T
-            backtrack[i] = np.argmax(hypothesis, axis=1)
-            omega = llhs[i] + hypothesis[range(len(self.log_A)),
-                                         backtrack[i]]
+            backtrack[t] = np.argmax(hypothesis, axis=1)
+            omega = llhs[t] + hypothesis[range(len(self.log_A)),
+                                         backtrack[t]]
 
         path_idx = [self.final_state_idx[np.argmax(log_omegas[-1, 
             self.final_state_idx])]]
