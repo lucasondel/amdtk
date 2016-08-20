@@ -85,6 +85,10 @@ class BayesianInfinitePhoneLoop(object):
         self.dgraph.setEmissions(self.name_model)
 
         self.unit_names = sorted(list(set(unit_names)))
+        self.unit_name_index = {}
+        for i, unit_name in enumerate(self.unit_names):
+            self.unit_name_index[unit_name] = i
+
         self.updateWeights()
 
     def updateWeights(self):
@@ -148,7 +152,7 @@ class BayesianInfinitePhoneLoop(object):
         resp_units = np.zeros((len(am_llhs), len(self.unit_names)),
                               dtype=float)
         for idx, state in enumerate(self.dgraph.states):
-            unit_idx = self.unit_names.index(state.parent_name)
+            unit_idx = self.unit_name_index[state.parent_name]
             resp_units[:, unit_idx] += P_Z[:, idx]
 
         # nframes = len(am_llhs)

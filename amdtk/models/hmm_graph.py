@@ -1,6 +1,11 @@
 
 import numpy as np
 from scipy.misc import logsumexp
+import pyximport
+
+pyximport.install(setup_args={"include_dirs":np.get_include()})
+
+from .hmm_graph_utils import _fast_logsumexp_axis1
 
 
 class State(object):
@@ -234,6 +239,11 @@ class HmmGraph(object):
     def _prepare(self):
         self._normalize()
         self._computelogProbInitStates()
+        self._log_pi = self.logProbInit()
+        self._log_A = self.logProbTrans()
+        self._final_state_idx = []
+        self._final_state_idx = [self.states.index(state) 
+                                 for state in self.final_states]
 
     def setEmissions(self, name_model):
         """Associate an emission probability model for each state of the
@@ -266,7 +276,8 @@ class HmmGraph(object):
             model.
 
         """
-        E_log_p_X_given_Z = np.zeros((X.shape[0], len(self.states)))
+        E_log_p_X_given_Z = np.zeros((X.shape[0], len(self.states)),
+                                     dtype=np.float32)
         log_resps = []
         for i, state in enumerate(self.states):
             llh, log_resp = state.model.expLogLikelihood(X)
@@ -292,21 +303,16 @@ class HmmGraph(object):
             The log alphas values of the recursions.
 
         """
-        log_alphas = np.zeros_like(llhs) - float('inf')
-        log_alphas[0] = llhs[0] + self.logProbInit()
-
-        buffer = np.zeros(len(self.states), dtype=float)
-
+        log_alphas = np.copy(llhs, order='C')
+        log_alphas[0] += self._log_pi
+        log_A_T = self._log_A.T.copy(order='C')
+        add = np.add
+        buffer = np.zeros((len(self.states), len(self.states)),  
+                          dtype=np.float32)
         for t in range(1, len(llhs)):
-            for state in self.states:
-                buffer[:] = -float('inf')
-                idx1 = self.states.index(state)
-                for prev_state_id, weight in state.previous_states.items():
-                    prev_state = self.id_state[prev_state_id]
-                    idx2 = self.states.index(prev_state)
-                    buffer[idx2] = weight + log_alphas[t-1, idx2]
-                log_alphas[t, idx1] = llhs[t, idx1] + logsumexp(buffer)
-
+            add(log_alphas[t - 1], log_A_T, out=buffer)
+            _fast_logsumexp_axis1(buffer,
+                                  log_alphas[t])
         return log_alphas
 
     def backward(self, llhs):
@@ -326,24 +332,17 @@ class HmmGraph(object):
             The log alphas values of the recursions.
 
         """
-        log_betas = np.zeros_like(llhs) - float('inf')
-        for state in self.final_states:
-            idx = self.states.index(state)
-            log_betas[-1, idx] = 0.
-
-        buffer = np.zeros(len(self.states), dtype=float)
-
+        log_betas = np.zeros_like(llhs, order='C', dtype=np.float32) 
+        log_betas -= float('inf')
+        log_betas[-1, self._final_state_idx] = 0.
+        log_A = self._log_A
+        add = np.add
+        buffer = np.zeros((len(self.states), len(self.states)),  
+                          dtype=np.float32)
         for t in reversed(range(llhs.shape[0]-1)):
-            for state in self.states:
-                buffer[:] = -float('inf')
-                idx1 = self.states.index(state)
-                for next_state_id, weight in state.next_states.items():
-                    next_state = self.id_state[next_state_id]
-                    idx2 = self.states.index(next_state)
-                    buffer[idx2] = weight + llhs[t + 1, idx2] + \
-                        log_betas[t + 1, idx2]
-                log_betas[t, idx1] = logsumexp(buffer)
-
+            add(log_A, llhs[t + 1], out=buffer)
+            add(buffer, log_betas[t + 1], out=buffer)
+            log_betas[t] = _fast_logsumexp_axis1(buffer, log_betas[t])
         return log_betas
 
     def viterbi(self, llhs, use_parent_name=False):
@@ -363,25 +362,15 @@ class HmmGraph(object):
 
         """
         backtrack = np.zeros_like(llhs, dtype=int)
-        log_omegas = np.zeros_like(llhs, dtype=float) - float('inf')
-        log_omegas[0] = llhs[0] + self.logProbInit()
-
-        buffer = np.zeros(len(self.states), dtype=float)
-
+        omega = llhs[0] + self._log_pi 
         for t in range(1, llhs.shape[0]):
-            for state in self.states:
-                buffer[:] = -float('inf')
-                idx1 = self.states.index(state)
-                for prev_state_id, weight in state.previous_states.items():
-                    next_state = self.id_state[prev_state_id]
-                    idx2 = self.states.index(next_state)
-                    buffer[idx2] = log_omegas[t - 1, idx2] + weight
-                hypothesis = llhs[t, idx1] + buffer
-                backtrack[t, idx1] = np.argmax(hypothesis)
-                log_omegas[t, idx1] = np.max(hypothesis)
+            hypothesis = omega + self._log_A.T
+            backtrack[i] = np.argmax(hypothesis, axis=1)
+            omega = llhs[i] + hypothesis[range(len(self.log_A)),
+                                         backtrack[i]]
 
-        final_idx = [self.states.index(state) for state in self.final_states]
-        path_idx = [final_idx[np.argmax(log_omegas[-1, final_idx])]]
+        path_idx = [self.final_state_idx[np.argmax(log_omegas[-1, 
+            self.final_state_idx])]]
         for i in reversed(range(1, len(llhs))):
             path_idx.insert(0, backtrack[i, path_idx[0]])
 
@@ -392,6 +381,7 @@ class HmmGraph(object):
             else:
                 name = self.states[idx].name
             path.append(name)
+
         return path
 
     def logProbInit(self):
@@ -407,7 +397,29 @@ class HmmGraph(object):
         for idx, state in enumerate(self.states):
             if state in self.init_states:
                 log_pi[idx] = self._state_log_pi[state]
+
         return log_pi
+
+    def logProbTrans(self):
+        """Transition matrix in the log probability domain.
+
+        Returns
+        -------
+        log_A : numpy.ndarray
+            Log transitions.
+
+        """
+        log_A = np.zeros((len(self.states), len(self.states)), 
+                         dtype=np.float32)
+        log_A -= float('inf')
+
+        for idx1, state in enumerate(self.states):
+            for next_state_id, weight in state.next_states.items():
+                next_state = self.id_state[next_state_id]
+                idx2 = self.states.index(next_state)
+                log_A[idx1, idx2] = weight 
+
+        return log_A
 
     def addState(self, name, parent_name=None):
         """Add a state to the HMM graph.
