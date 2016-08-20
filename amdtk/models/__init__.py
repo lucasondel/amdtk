@@ -14,8 +14,6 @@ from .multivariate_gaussian import BayesianGaussianDiagCov
 
 from .normal_gamma import NormalGamma
 
-from .acoustic_model import AcousticModel
-
 from .hmm_graph import HmmGraph
 
 from .phone_loop import BayesianInfinitePhoneLoop
@@ -23,4 +21,3 @@ from .phone_loop import BayesianInfinitePhoneLoop
 from .hpyp import PitmanYorProcess
 from .hpyp import HierarchicalPitmanYorProcess
 
-from .decodable_graph import UnigramDecodableGraph
