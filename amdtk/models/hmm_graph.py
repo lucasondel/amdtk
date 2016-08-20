@@ -303,14 +303,16 @@ class HmmGraph(object):
             The log alphas values of the recursions.
 
         """
-        log_alphas = np.copy(llhs, order='C')
+        log_alphas = np.zeros_like(llhs, order='C')
         log_alphas[0] += self._log_pi
         log_A_T = self._log_A.T.copy(order='C')
         add = np.add
         buffer = np.zeros((len(self.states), len(self.states)),  
                           dtype=np.float32)
         for t in range(1, len(llhs)):
-            add(log_alphas[t - 1], log_A_T, out=buffer)
+            buffer.fill(0)
+            add(log_A_T, llhs[t], out=buffer)
+            add(buffer, log_alphas[t - 1], out=buffer)
             _fast_logsumexp_axis1(buffer,
                                   log_alphas[t])
         return log_alphas
@@ -340,9 +342,10 @@ class HmmGraph(object):
         buffer = np.zeros((len(self.states), len(self.states)),  
                           dtype=np.float32)
         for t in reversed(range(llhs.shape[0]-1)):
+            buffer.fill(0)
             add(log_A, llhs[t + 1], out=buffer)
             add(buffer, log_betas[t + 1], out=buffer)
-            log_betas[t] = _fast_logsumexp_axis1(buffer, log_betas[t])
+            _fast_logsumexp_axis1(buffer, log_betas[t])
         return log_betas
 
     def viterbi(self, llhs, use_parent_name=False):
@@ -479,7 +482,7 @@ class HmmGraph(object):
         """
         state.addLink(next_state, weight)
 
-    def addSilenceState(self, name='sil'):
+    def addSilenceState(self, name, nstates):
         """Add a silence state to the HMM.
 
         We force the HMM to start and to finish in the silence state.
@@ -488,9 +491,11 @@ class HmmGraph(object):
         ----------
         name : str
             Name of the state.
+        nstates : int
+            Number of states in the silence model. 
 
         """
-        sil_model = self.selfLoop(name)
+        sil_model = self.leftToRightHmm(name, nstates)
         self.states += sil_model.states
         self.id_state = {**self.id_state, **sil_model.id_state}
         sil_state = sil_model.states[0]
