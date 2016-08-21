@@ -59,7 +59,7 @@ ncomponents=2
 kappa=5
 a=3
 b=3
-model_type=ploop_l${fea_type}_c${concentration}_T${truncation}_s${nstates}_g${ncomponents}_a${a}_b${b}
+model_type=ploop_l${fea_type}_c${concentration}_T${truncation}_sil${sil_ngauss}_s${nstates}_g${ncomponents}_a${a}_b${b}
 
 ############################################################################
 # Training settings.                                                       #
