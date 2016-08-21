@@ -18,7 +18,10 @@ from ..models import HmmGraph
 from ..models import MixtureStats
 from ..models import GaussianDiagCovStats
 
+# Watchout before changing this as we expect the silence name to be 
+# lower (alphabetically speaking) than the unit prefix.
 UNIT_PREFIX = 'a'
+SILENCE_NAME = 'sil'
 
 
 class BayesianInfinitePhoneLoop(object):
@@ -34,6 +37,10 @@ class BayesianInfinitePhoneLoop(object):
         HMM model corresponding to the phone loop model.
     name_model : dict
         Mapping "hmm state name" -> "emission probability model".
+    id_model : dict
+        Mapping "gmm unique id" -> "emission probability model".
+    name_id : dict
+        Mapping "hmm state name" -> "gmm unique id"
     unit_names : list
         Name assoctiated for each unit.
 
@@ -73,24 +80,32 @@ class BayesianInfinitePhoneLoop(object):
                                                  nstates)
 
         if silence_model is not None:
-            self.dgraph.addSilenceState('sil')
-            models = gmms + [silence_model]
+            self.dgraph.addSilenceState(SILENCE_NAME, nstates)
+            models = [silence_model] * nstates
+            models += gmms
         else:
             models = gmms
 
         unit_names, state_names = self.dgraph.names
         self.name_model = {}
-        for i, state_name in enumerate(sorted(state_names)):
+        self.id_model = {}
+        self.name_id = {}
+        for i, state_name in enumerate(sorted(state_names, reverse=True)):
             self.name_model[state_name] = models[i]
+            self.id_model[i] = models[i]
+            self.name_id[state_name] = i
         self.dgraph.setEmissions(self.name_model)
 
-        self.unit_names = sorted(list(set(unit_names)))
+        self.unit_names = sorted(list(set(unit_names)), reverse=True)
+        self.unit_name_index = {}
+        for i, unit_name in enumerate(self.unit_names):
+            self.unit_name_index[unit_name] = i
+
         self.updateWeights()
 
     def updateWeights(self):
         """Update the weights of the phone loop."""
         log_pi = self.posterior.expLogPi()
-        log_pi -= logsumexp(log_pi)
         weights = {}
 
         for i, unit_name in enumerate(self.unit_names):
@@ -148,11 +163,8 @@ class BayesianInfinitePhoneLoop(object):
         resp_units = np.zeros((len(am_llhs), len(self.unit_names)),
                               dtype=float)
         for idx, state in enumerate(self.dgraph.states):
-            unit_idx = self.unit_names.index(state.parent_name)
+            unit_idx = self.unit_name_index[state.parent_name]
             resp_units[:, unit_idx] += P_Z[:, idx]
-
-        # nframes = len(am_llhs)
-        # resp_units = np.exp(log_P_Z).reshape((nframes, dim, -1)).sum(axis=2)
 
         # log-likelihood of the sequence. We compute it to monitor the
         # convergence of the training.
@@ -214,11 +226,19 @@ class BayesianInfinitePhoneLoop(object):
             gmm = state.model
             log_weights = (hmm_log_resps[:, i] + am_log_resps[i].T).T
             weights = np.exp(log_weights)
-            gmm_stats[state.name] = MixtureStats(weights)
-            gauss_stats[state.name] = {}
-            for j in range(gmm.k):
-                gauss_stats[state.name][j] = \
-                    GaussianDiagCovStats(X, weights[:, j])
+            key = state.name
+            if key not in gmm_stats.keys():
+                gmm_stats[key] = MixtureStats(weights)
+                gauss_stats[key] = {}
+                for j in range(gmm.k):
+                    gauss_stats[key][j] = \
+                        GaussianDiagCovStats(X, weights[:, j])
+            else:
+                gmm_stats[key] += MixtureStats(weights)
+                for j in range(gmm.k):
+                    gauss_stats[key][j] += \
+                        GaussianDiagCovStats(X, weights[:, j])
+
 
         return tdp_stats, gmm_stats, gauss_stats
 
@@ -260,3 +280,4 @@ class BayesianInfinitePhoneLoop(object):
             for j, stats in data.items():
                 gmm.components[j].updatePosterior(stats)
         self.updateWeights()
+

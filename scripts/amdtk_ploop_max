@@ -30,6 +30,7 @@ def main():
 
     # Print the lower bound of log-likelihood.
     print(E_log_p_X - model.KLPosteriorPrior())
+    #print('E[log p(X)] =', E_log_p_X, 'KL =', model.KLPosteriorPrior())
 
     # Dump the updated model on the disk.
     pickle.dump(model, args.output)

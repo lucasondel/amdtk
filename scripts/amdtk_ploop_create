@@ -127,7 +127,7 @@ def main():
     # Dump the model on the disk.
     with open(args.output, 'wb') as f:
         pickle.dump(model, f)
-
+    
 if __name__ == '__main__':
     main()
 else:
