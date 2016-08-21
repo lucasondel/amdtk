@@ -43,6 +43,8 @@ utils/phone_loop_train.sh $setup 10 $root/$model_type/initial_model \
     $root/$model_type/unigram || exit 1
 echo done
 
+exit 0
+
 echo "($((++n))) Labeling the unigram model..."
 utils/phone_loop_label.sh $setup  $root/$model_type/unigram \
     $root/$model_type/unigram_labels || exit 1

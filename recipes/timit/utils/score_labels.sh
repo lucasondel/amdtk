@@ -23,7 +23,7 @@ source $setup || exit 1
 # create master label file for TIMIT if it doesn't exist (in the dir of run.sh)
 if [ ! -e $score_ref ]; then
     echo "Concatenating master labels for TIMIT..."
-    amdtk_concat --timit --add_dirname 1 $db_path/TEST/*/*/*.PHN $score_ref
+    amdtk_concat --timit --add_dirname 1 "$db_path/test/*/*/*.phn" $score_ref
 fi
 
 mkdir -p $out_dir
