@@ -88,16 +88,13 @@ class BayesianInfinitePhoneLoop(object):
 
         unit_names, state_names = self.dgraph.names
         self.name_model = {}
-        for i, state_name in enumerate(sorted(state_names, reverse=True)):
-            self.name_model[state_name] = models[i]
-        self.dgraph.setEmissions(self.name_model)
-
         self.id_model = {}
         self.name_id = {}
-        for i, name in enumerate(self.name_model):
-            model = self.name_model[name]
-            self.id_model[i] = model
-            self.name_id[name] = models.index(model)
+        for i, state_name in enumerate(sorted(state_names, reverse=True)):
+            self.name_model[state_name] = models[i]
+            self.id_model[i] = models[i]
+            self.name_id[state_name] = i
+        self.dgraph.setEmissions(self.name_model)
 
         self.unit_names = sorted(list(set(unit_names)), reverse=True)
         self.unit_name_index = {}
@@ -109,7 +106,6 @@ class BayesianInfinitePhoneLoop(object):
     def updateWeights(self):
         """Update the weights of the phone loop."""
         log_pi = self.posterior.expLogPi()
-        log_pi -= logsumexp(log_pi)
         weights = {}
 
         for i, unit_name in enumerate(self.unit_names):
@@ -230,8 +226,8 @@ class BayesianInfinitePhoneLoop(object):
             gmm = state.model
             log_weights = (hmm_log_resps[:, i] + am_log_resps[i].T).T
             weights = np.exp(log_weights)
-            key = self.name_id[state.name]
-            if gmm not in gmm_stats.keys():
+            key = state.name
+            if key not in gmm_stats.keys():
                 gmm_stats[key] = MixtureStats(weights)
                 gauss_stats[key] = {}
                 for j in range(gmm.k):
@@ -275,12 +271,12 @@ class BayesianInfinitePhoneLoop(object):
 
         """
         self.posterior = self.prior.newPosterior(tdp_stats)
-        for model_id, stats in gmm_stats.items():
-            gmm = self.id_model[model_id]
+        for name, stats in gmm_stats.items():
+            gmm = self.name_model[name]
             gmm.updatePosterior(stats)
 
-        for model_id, data in gauss_stats.items():
-            gmm = self.id_model[model_id]
+        for name, data in gauss_stats.items():
+            gmm = self.name_model[name]
             for j, stats in data.items():
                 gmm.components[j].updatePosterior(stats)
         self.updateWeights()
