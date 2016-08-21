@@ -78,9 +78,7 @@ class HmmGraph(object):
 
     Attributes
     ----------
-    states : list
-        List of states in the HMM.
-    id_state : dict
+   id_state : dict
         Mapping identifier - state.
     init_states : list
         List of initial states of the HMM.
@@ -89,7 +87,12 @@ class HmmGraph(object):
     names : tuple
         A tuple containing the list of each state's parent name and each
         state's name. Both lists are of the same size even if some units
+    states : list
+        List of states in the HMM.
         share the same "parent_name" attribute.
+    sub_hmms : list
+        List of sub-hmm that composed the global HMM. For the case of 
+        simple models like the left-to-right hmm, this list is empty.
 
     """
 
@@ -124,7 +127,7 @@ class HmmGraph(object):
         return graph
 
     @classmethod
-    def leftToRightHmm(cls, name, nstates):
+    def leftToRightHmm(cls, name, nstates, share_name=False):
         """Create a left-to-rifht HMM where each state is ooping on
         itself.
 
@@ -134,6 +137,8 @@ class HmmGraph(object):
             Name of the model.
         nstates : int
             Number of states in the HMM.
+        share_name : boolean
+            If set to True, the states will share the same name.
 
         Returns
         -------
@@ -144,7 +149,10 @@ class HmmGraph(object):
         graph = cls()
 
         for i in range(nstates):
-            state_name = name + '_' + str(i+1)
+            if not share_name:
+                state_name = name + '_' + str(i+1)
+            else:
+                state_name = name
             state = graph.addState(state_name, parent_name=name)
             if i == 0:
                 graph.setInitState(state)
@@ -191,6 +199,7 @@ class HmmGraph(object):
         for i in range(nunits):
             unit_name = prefix + str(i+1)
             hmm_graph = cls.leftToRightHmm(unit_name, nstates)
+            graph.sub_hmms.append(hmm_graph)
             graph.id_state = {**graph.id_state, **hmm_graph.id_state}
             graph.states += hmm_graph.states
             graph.init_states += hmm_graph.init_states
@@ -210,6 +219,7 @@ class HmmGraph(object):
         self.id_state = {}
         self.init_states = []
         self.final_states = []
+        self.sub_hmms = []
 
     @property
     def names(self):
@@ -236,8 +246,9 @@ class HmmGraph(object):
                 next_state = self.id_state[next_state_id]
                 next_state.previous_states[state.state_id] = weights[i]
 
-    def _prepare(self):
-        self._normalize()
+    def _prepare(self, normalize=True):
+        if normalize:
+            self._normalize()
         self._computelogProbInitStates()
         self._log_pi = self.logProbInit()
         self._log_A = self.logProbTrans()
@@ -311,10 +322,11 @@ class HmmGraph(object):
                           dtype=np.float32)
         for t in range(1, len(llhs)):
             buffer.fill(0)
-            add(log_A_T, llhs[t], out=buffer)
-            add(buffer, log_alphas[t - 1], out=buffer)
+            add(log_A_T, log_alphas[t - 1], out=buffer)
             _fast_logsumexp_axis1(buffer,
                                   log_alphas[t])
+            log_alphas[t] += llhs[t]
+
         return log_alphas
 
     def backward(self, llhs):
@@ -369,11 +381,11 @@ class HmmGraph(object):
         for t in range(1, llhs.shape[0]):
             hypothesis = omega + self._log_A.T
             backtrack[t] = np.argmax(hypothesis, axis=1)
-            omega = llhs[t] + hypothesis[range(len(self.log_A)),
+            omega = llhs[t] + hypothesis[range(len(self._log_A)),
                                          backtrack[t]]
 
-        path_idx = [self.final_state_idx[np.argmax(log_omegas[-1, 
-            self.final_state_idx])]]
+        path_idx = [self._final_state_idx[np.argmax(omega[ 
+            self._final_state_idx])]]
         for i in reversed(range(1, len(llhs))):
             path_idx.insert(0, backtrack[i, path_idx[0]])
 
@@ -495,17 +507,20 @@ class HmmGraph(object):
             Number of states in the silence model. 
 
         """
-        sil_model = self.leftToRightHmm(name, nstates)
+        sil_model = self.leftToRightHmm(name, nstates, share_name=True)
+        self.sub_hmms.append(sil_model)
         self.states += sil_model.states
         self.id_state = {**self.id_state, **sil_model.id_state}
-        sil_state = sil_model.states[0]
+        sil_init_state = sil_model.init_states[0]
+        sil_final_state = sil_model.final_states[0]
 
         for state in self.final_states:
-            self.addLink(state, sil_state)
+            self.addLink(state, sil_init_state)
+        self.addLink(sil_final_state, sil_init_state)
         for state in self.init_states:
-            self.addLink(sil_state, state)
-        self.init_states = [sil_state]
-        self.final_states = [sil_state]
+            self.addLink(sil_final_state, state)
+        self.init_states = [sil_init_state]
+        self.final_states = [sil_final_state]
 
         self._prepare()
 
@@ -518,17 +533,19 @@ class HmmGraph(object):
             Mapping unit_name -> log_probability
 
         """
-        for final_state in self.final_states:
-            for init_state in self.init_states:
+        for sub_hmm1 in self.sub_hmms:
+            final_state = sub_hmm1.final_states[0]
+            for sub_hmm2 in self.sub_hmms:
+                init_state = sub_hmm2.init_states[0]
                 weight = weights[init_state.parent_name]
                 self.addLink(final_state, init_state, weight)
 
-        self._prepare()
+        self._prepare(normalize=False)
 
     def toFst(self):
         """Convert the HMM graph to an OpenFst object.
 
-        You need to have installed the OpenFst python extension to used
+        You need to have installed the OpenFst python extension to use
         this method.
 
         Returns
