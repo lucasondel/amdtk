@@ -13,17 +13,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--niter",  type=int, default=10,
                         help="number of iteration for the sampling")
-    parser.add_argument("--resample",  action="store_true",
+    parser.add_argument("--resample_hparams",  action="store_true",
                         help="Activate hyperparameter resampling. This" +
                              " updates concentration and discount for" +
                              " every level of the hierarchy (default: False).")
     parser.add_argument("--tokenizer", choices=["word", "char", "phone"],
                         default="word")
-    parser.add_argument("--export_fst", action="store_true",
-                        help="Converts the Language model into an FSA in " +
-                             "openFst format and stores it into a file named" +
-                             " like the language model with additional ending" +
-                             ".fst.txt")
     parser.add_argument("params", help="parameters for each level of the "
                                        "HPYP as column separated string: d0,"
                                        "c0:d1,c1:...")
@@ -76,16 +71,6 @@ def main():
 
     with open(args.out, 'wb') as f:
         pickle.dump(model, f)
-
-    with open(args.symbols_file, 'w') as syms_f:
-        full_vocab = model.getFullVocab()
-        for word, id in full_vocab:
-            syms_f.write('{word}\t{id}\n'.format(word=word, id=id))
-
-    if args.export_fst:
-        with open(args.out + ".fst.txt", 'w') as fst_f:
-            grammar_fsa = model.exportGrammarFSA()
-            fst_f.writelines(grammar_fsa)
 
 if __name__ == '__main__':
     main()

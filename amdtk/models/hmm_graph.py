@@ -91,7 +91,7 @@ class HmmGraph(object):
         List of states in the HMM.
         share the same "parent_name" attribute.
     sub_hmms : list
-        List of sub-hmm that composed the global HMM. For the case of 
+        List of sub-hmm that composed the global HMM. For the case of
         simple models like the left-to-right hmm, this list is empty.
 
     """
@@ -227,7 +227,7 @@ class HmmGraph(object):
         parent_names = [name.split('_')[0] for name in state_names]
         return parent_names, state_names
 
-    def _computelogProbInitStates(self):
+    def _computeLogProbInitStates(self):
         state_log_pi = 1 / len(self.init_states)
         self._state_log_pi = {}
         for state in self.init_states:
@@ -249,11 +249,11 @@ class HmmGraph(object):
     def _prepare(self, normalize=True):
         if normalize:
             self._normalize()
-        self._computelogProbInitStates()
+        self._computeLogProbInitStates()
         self._log_pi = self.logProbInit()
         self._log_A = self.logProbTrans()
         self._final_state_idx = []
-        self._final_state_idx = [self.states.index(state) 
+        self._final_state_idx = [self.states.index(state)
                                  for state in self.final_states]
 
     def setEmissions(self, name_model):
@@ -318,7 +318,7 @@ class HmmGraph(object):
         log_alphas[0] += self._log_pi
         log_A_T = self._log_A.T.copy(order='C')
         add = np.add
-        buffer = np.zeros((len(self.states), len(self.states)),  
+        buffer = np.zeros((len(self.states), len(self.states)),
                           dtype=np.float32)
         for t in range(1, len(llhs)):
             buffer.fill(0)
@@ -346,12 +346,12 @@ class HmmGraph(object):
             The log alphas values of the recursions.
 
         """
-        log_betas = np.zeros_like(llhs, order='C', dtype=np.float32) 
+        log_betas = np.zeros_like(llhs, order='C', dtype=np.float32)
         log_betas -= float('inf')
         log_betas[-1, self._final_state_idx] = 0.
         log_A = self._log_A
         add = np.add
-        buffer = np.zeros((len(self.states), len(self.states)),  
+        buffer = np.zeros((len(self.states), len(self.states)),
                           dtype=np.float32)
         for t in reversed(range(llhs.shape[0]-1)):
             buffer.fill(0)
@@ -377,14 +377,14 @@ class HmmGraph(object):
 
         """
         backtrack = np.zeros_like(llhs, dtype=int)
-        omega = llhs[0] + self._log_pi 
+        omega = llhs[0] + self._log_pi
         for t in range(1, llhs.shape[0]):
             hypothesis = omega + self._log_A.T
             backtrack[t] = np.argmax(hypothesis, axis=1)
             omega = llhs[t] + hypothesis[range(len(self._log_A)),
                                          backtrack[t]]
 
-        path_idx = [self._final_state_idx[np.argmax(omega[ 
+        path_idx = [self._final_state_idx[np.argmax(omega[
             self._final_state_idx])]]
         for i in reversed(range(1, len(llhs))):
             path_idx.insert(0, backtrack[i, path_idx[0]])
@@ -424,7 +424,7 @@ class HmmGraph(object):
             Log transitions.
 
         """
-        log_A = np.zeros((len(self.states), len(self.states)), 
+        log_A = np.zeros((len(self.states), len(self.states)),
                          dtype=np.float32)
         log_A -= float('inf')
 
@@ -432,7 +432,7 @@ class HmmGraph(object):
             for next_state_id, weight in state.next_states.items():
                 next_state = self.id_state[next_state_id]
                 idx2 = self.states.index(next_state)
-                log_A[idx1, idx2] = weight 
+                log_A[idx1, idx2] = weight
 
         return log_A
 
@@ -504,7 +504,7 @@ class HmmGraph(object):
         name : str
             Name of the state.
         nstates : int
-            Number of states in the silence model. 
+            Number of states in the silence model.
 
         """
         sil_model = self.leftToRightHmm(name, nstates, share_name=True)
@@ -541,6 +541,46 @@ class HmmGraph(object):
                 self.addLink(final_state, init_state, weight)
 
         self._prepare(normalize=False)
+
+    def setBigramWeights(self, bigram):
+        """Set unigram language model for the unit-loop HMM.
+
+        Parameters
+        ----------
+        weights : dict
+            Mapping unit_name -> log_probability
+
+        """
+        from .hpyp import EMPTY_CONTEXT
+
+        order = bigram.order
+
+        # Initial states.
+        log_pi = np.zeros(len(self.states)) - float('inf')
+        for state in self.init_states:
+            unit_name = state.parent_name
+            unit_id = bigram.vocab[unit_name]
+            prob = bigram.predictiveProbability(order,
+                                                EMPTY_CONTEXT,
+                                                unit_id)
+            log_pi[self.states.index(state)] = np.log(prob)
+        self._log_pi = log_pi
+
+        # Bigram transitions.
+        for sub_hmm1 in self.sub_hmms:
+            final_state = sub_hmm1.final_states[0]
+            unit1_name = final_state.parent_name
+            unit1_id = bigram.vocab[unit1_name]
+            for sub_hmm2 in self.sub_hmms:
+                init_state = sub_hmm2.init_states[0]
+                unit2_name = init_state.parent_name
+                unit2_id = bigram.vocab[unit2_name]
+                prob = bigram.predictiveProbability(order,
+                                                    tuple([unit1_id]),
+                                                    unit2_id)
+                self.addLink(final_state, init_state, np.log(prob))
+
+        self._log_A = self.logProbTrans()
 
     def toFst(self):
         """Convert the HMM graph to an OpenFst object.

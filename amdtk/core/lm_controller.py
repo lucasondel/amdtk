@@ -4,10 +4,9 @@
 import numpy as np
 import string
 import pywrapfst as fst
-from ..models.hierarchical_language_model import EMPTY_CONTEXT
-from ..models.hierarchical_language_model import VOCAB_START
-from ..models.hierarchical_language_model import SPECIAL_VOCAB
-from ..models.hierarchical_language_model import SEQ_END_LABEL, SEQ_END
+from ..models.hpyp import EMPTY_CONTEXT
+from ..models.hpyp import VOCAB_START
+from ..models.hpyp import SEQ_END
 
 
 class LMParamsStringBadlyFormatted(Exception):
@@ -19,29 +18,20 @@ class LMParamsStringBadlyFormatted(Exception):
         return repr(self.value)
 
 
-def word_tokenize(text):
-    return text.lower().strip().split()
-
-
-def char_tokenize(text):
-    return list(text.lower().strip())
-
-
-def phone_tokenize(text):
+def unitTokenize(text):
     """Tokenize the output ot the acoustic unit discovery,
     where acoustic units are named a1, a2, ...
     Note that we discard whitespace
     """
-    delimiter = 'a'
     return ['a' + ele.strip()
             for i, ele in enumerate(text.lower().strip().split('a')) if i > 0]
 
 
-def remove_sentence_marker(text):
+def removeSentenceMarker(text):
     """remove leading or trailing sentence_markers
     (or anywhere else)"""
     sentence_marker = '</s>'
-    return text.replace(sentence_marker,'')
+    return text.replace(sentence_marker, '')
 
 
 def parseLMParams(str):
@@ -75,7 +65,7 @@ def parseLMParams(str):
     return [parse(s) for s in str.split(':')]
 
 
-def textToInt(vocab, text, tokenize=word_tokenize):
+def textToInt(vocab, text, tokenize=unitTokenize):
     """Convert space separated tokens to integer.
 
     Parameters
@@ -104,7 +94,8 @@ def textToInt(vocab, text, tokenize=word_tokenize):
     return data_int
 
 
-def getVocabFromText(data_text, remove_punctuation=True, tokenize=word_tokenize):
+def getVocabFromText(data_text, remove_punctuation=True,
+                     tokenize=unitTokenize):
     """Get vocabulary from the given text.
 
     Parameters
@@ -125,7 +116,7 @@ def getVocabFromText(data_text, remove_punctuation=True, tokenize=word_tokenize)
 
     word_set = set([])
     for line in data_text:
-        line = remove_sentence_marker(line)
+        line = removeSentenceMarker(line)
         if remove_punctuation:
             translator = line.maketrans({key: None for key in
                                         string.punctuation})
@@ -133,13 +124,13 @@ def getVocabFromText(data_text, remove_punctuation=True, tokenize=word_tokenize)
 
         for token in tokenize(line):
             word_set.add(token)
-    vocab = { word: id
-              for id, word in enumerate(sorted(list(word_set)), VOCAB_START)}
+    vocab = {word: id
+             for id, word in enumerate(sorted(list(word_set)), VOCAB_START)}
     return vocab
 
 
 def prepareText(data_text, vocab=None, remove_punctuation=True,
-                tokenize=word_tokenize):
+                tokenize=unitTokenize):
     """Prepare text to build HPYP LM.
 
     Parameters
@@ -167,12 +158,12 @@ def prepareText(data_text, vocab=None, remove_punctuation=True,
         vocab = getVocabFromText(data_text, tokenize)
 
     for line in data_text:
-        line = remove_sentence_marker(line)
+        line = removeSentenceMarker(line)
         if remove_punctuation:
             translator = line.maketrans({key: None for key in
                                         string.punctuation})
             line = line.translate(translator)
-            if tokenize == phone_tokenize:
+            if tokenize == unitTokenize:
                 # each 'word' should become a separate line
                 for part in line.split():
                     data_int.append(textToInt(vocab, part, tokenize))
@@ -268,8 +259,9 @@ def sampleNgramLM(model, data_int, keep_add=False):
                 restaurant = model.addRestaurant(model.order, context)
             restaurant.serveDish(token_dish, remove_customer=not keep_add)
 
+
 def resampleNgramLM(model, data1_int, data2_int):
-    """Resample a seating arrangement using Gibbs sampling. 
+    """Resample a seating arrangement using Gibbs sampling.
 
     Parameters
     ----------
@@ -295,10 +287,10 @@ def resampleNgramLM(model, data1_int, data2_int):
                 restaurant = model[model.order][context]
             except KeyError:
                 restaurant = model.addRestaurant(model.order, context)
-            
+
             # Remove a customer eating this dish.
             restaurant.removeCustomer(token_dish)
-        
+
         # Now add the customers from the new text
         for j, token_dish in enumerate(line2_int):
             # Extract the context from the history of the current token.
@@ -310,6 +302,7 @@ def resampleNgramLM(model, data1_int, data2_int):
             except KeyError:
                 restaurant = model.addRestaurant(model.order, context)
             restaurant.serveDish(token_dish, remove_customer=False)
+
 
 def NgramLMLogLikelihood(model, data_int):
     """Compute the n-gram LM log-likelihood.
@@ -338,28 +331,28 @@ def NgramLMLogLikelihood(model, data_int):
     return llh
 
 
-def __walkFst(f, state, id2label, path):    
+def __walkFst(f, state, id2label, path):
     arcs = list(f.arcs(state))
-    
+
     # If there are no more outgoing arcs finish the recursion.
     if len(arcs) == 0:
         return
 
     probs = np.array([np.exp(-float(arc.weight.string)) for arc in arcs])
-    
+
     # Because of numerical precision issues, it is sometimes necessary to
     # renormalize the probabilites.
     probs /= probs.sum()
 
     arc = np.random.choice(arcs, p=probs)
-    
+
     # Add the label to the path except if it is an epsilon label.
     if arc.ilabel != 0:
         path.append(id2label[arc.ilabel])
 
     # Follow the chosen arc.
     __walkFst(f, arc.nextstate, id2label, path)
-    
+
 
 def samplePathFromFst(fst_lattice, id2label):
     """Sample path from a lattice.
@@ -377,7 +370,7 @@ def samplePathFromFst(fst_lattice, id2label):
 
     """
     # Transform fst_lattice into a stochastic FST.
-    stoc_fst_lattice = fst.push(fst_lattice, push_weights=True, 
+    stoc_fst_lattice = fst.push(fst_lattice, push_weights=True,
                                 remove_total_weight=True)
 
     # Random walk on the stochastic FST.
@@ -387,5 +380,5 @@ def samplePathFromFst(fst_lattice, id2label):
     return path
 
 
-    
+
 

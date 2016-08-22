@@ -5,17 +5,19 @@
 #
 
 
-if [ $# -ne 3 ]; then
-    echo usage: $0 "<setup.sh> <label_dir> <out_dir>"
+if [ $# -ne 4 ]; then
+    echo usage: $0 "<setup.sh> <keys> <label_dir> <out_dir>"
     exit 1
 fi
 
-setup=$1
-label_dir=$2
-out_dir=$3
+setup="$1"
+keys="$2"
+label_dir="$3"
+out_dir="$4"
 
 score_lbs="$out_dir/score.lab"
 score_res="$out_dir/scores"
+score_ref="data/score.ref"
 
 # load the configuration
 source $setup || exit 1
@@ -31,7 +33,7 @@ mkdir -p $out_dir
 # extract all labels from current run, if not done so already
 if [ ! -e $score_lbs ]; then
     echo "Concatenating AUD labels..."
-    lab_files=$(awk -v label_dir="$label_dir" '{ print label_dir "/" $0 ".lab"}' $score_keys)
+    lab_files=$(awk -v label_dir="$label_dir" '{ print label_dir "/" $0 ".lab"}' $keys)
     amdtk_concat --htk $lab_files $score_lbs
 fi
 

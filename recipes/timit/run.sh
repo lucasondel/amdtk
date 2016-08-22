@@ -26,20 +26,31 @@ fi
 n=0 
 
 echo "($((++n))) Data preparation..."
-local/prepare_data.sh $setup || exit 1
+local/prepare_data.sh \
+    $setup || exit 1
 #local/prepare_data_clsp.sh $setup || exit 1 # Use this on clsp grid
 echo done
 
 echo "($((++n))) Features extraction..."
-utils/extract_features_db.sh $setup || exit 1
+utils/extract_features_db.sh \
+    $setup \
+    "-q $queues -l matylda5=0.3" || exit 1
 echo done
 
 echo "($((++n))) Creating the model..."
-utils/phone_loop_create.sh $setup $root/$model_type/initial_model || exit 1
+utils/phone_loop_create.sh \
+    $setup \
+    $train_keys \
+    $root/$model_type/initial_model || exit 1
 echo done
 
 echo "($((++n))) Training the model with unigram LM..."
-utils/phone_loop_train.sh $setup 10 $root/$model_type/initial_model \
+utils/phone_loop_train.sh \
+    $setup \
+    "-q $queues -l matylda5=0.5" \
+    10 \
+    $train_keys \
+    $root/$model_type/initial_model \
     $root/$model_type/unigram || exit 1
 echo done
 

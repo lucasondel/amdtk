@@ -1,38 +1,38 @@
 #!/usr/bin/env bash
 
-#
-# Estimate the hierarchical Pitman-Yor language model.
-#
-
-if [ $# -ne 1 ]; then
-    echo "usage: $0 <setup.sh>"
+if [ $# -ne 3 ]; then
+    echo ""
+    echo "Estimate the hierarchical Pitman-Yor language model."
+    echo ""
+    echo "usage: $0 <setup.sh> <labels_dir> <out_dir>"
     exit 1
 fi
 
 setup=$1
+text="$2/text"
+out_dir="$3"
 
 source $setup || exit 1
 
-if [ ! -e "$lm_base_path/.done" ]; then
-    mkdir -p "$lm_base_path"
+if [ ! -e "$out_dir/.done" ]; then
+    mkdir -p "$out_dir"
 
     # Generate the vocabulary.
-    vocab_file="$lm_base_path/vocabulary.txt"
+    vocab_file="$out_dir/vocabulary.txt"
     for i in $(seq $truncation); do
         echo "a$i"
     done > "$vocab_file"
+    echo "sil" >> "$vocab_file"
 
     # Carry out lm training
     amdtk_lm_create \
-        $fixed \
-        "$params" \
+        "$lm_params" \
         "$vocab_file" \
-        "$text_input_file" \
-        "$lm_output_file" \
-        "$symbols_file" \
-        2>&1 > "$lm_base_path/amdtk_lm_create.log"
+        "$text" \
+        "$out_dir/lm.bin" \
+        2>&1 > "$out_dir/amdtk_lm_create.log"
 
-    date > "$lm_base_path/.done"
+    date > "$out_dir/.done"
 else
     echo "The model has already been created. Skipping."
 fi

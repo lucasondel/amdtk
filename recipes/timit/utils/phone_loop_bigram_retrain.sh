@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
 if [ $# -ne 6 ]; then
-    echo ""
-    echo "Train the infinite phone-loop model"
-    echo ""
     echo "usage: $0 <setup.sh> <parallel_opts> <niter> <keys> <model_int_dir> <model_out_dir>"
+    echo ""
+    echo "Retrain the phone-loop model with a bigram language model."
+    echo ""
     exit 1
 fi
 
@@ -33,14 +33,14 @@ if [ ! -e $out_dir/.done ]; then
 
     # Now start to train the model. 
     for i in $(seq "$niter") ; do
-        utils/phone_loop_vb_iter.sh \
+        utils/phone_loop_bigram_retrain_iter.sh \
             "$setup" \
             "$parallel_opts" \
             "$keys" \
             "$out_dir/iter$((i - 1))" \
             "$out_dir/iter$i"
 
-        echo "iteration: $i log-likelihood >= $(cat $out_dir/iter$i/llh.txt)"|| exit 1
+        echo "iteration: $i log-likelihood >= $(cat $out_dir/iter$i/retrained_model/llh.txt)"|| exit 1
     done
 
     # Copy the model of the last iteration to the output directory.

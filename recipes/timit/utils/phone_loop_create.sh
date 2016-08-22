@@ -15,11 +15,11 @@ out_dir="$3"
 source $setup || exit 1
 
 if [ ! -e "$out_dir/.done" ]; then
-    mkdir "$out_dir"
+    mkdir -p "$out_dir"
 
     # Create the list of features files for the train set.
     while read line; do
-        echo "$fea_dir/$line.$fea_ext" >> "$out_dir"/fea.list
+        echo "$fea_dir/$line.$fea_ext" >> "$out_dir/fea.list"
     done < "$keys"
 
     # Get the mean and covariance of the data to initialize the model.
@@ -40,9 +40,8 @@ if [ ! -e "$out_dir/.done" ]; then
         --alpha "$alpha" \
         --kappa "$kappa" \
         --a "$a" \
-        --b "$b" 
-
-        "$out_dir/stats" "$out_dir/model.bin"
+        --b "$b" \
+        "$out_dir/stats" "$out_dir/model.bin" || exit 1
 
     date > "$out_dir/.done"
 else
