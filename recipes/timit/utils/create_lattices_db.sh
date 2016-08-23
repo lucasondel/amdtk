@@ -5,7 +5,10 @@
 #
 
 if [ $# -ne 3 ]; then
-    echo "usage: $0 <setup.sh> <post_dir> <out_dir>"
+    echo "usage: $0 <setup.sh> <post_dir> <out_dir>         "
+    echo "                                                  "
+    echo "Generate the lattices for the whole database.     "
+    echo "                                                  "
     exit 1
 fi
 

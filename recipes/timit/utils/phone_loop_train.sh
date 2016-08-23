@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
 if [ $# -ne 6 ]; then
-    echo ""
-    echo "Train the infinite phone-loop model"
-    echo ""
-    echo "usage: $0 <setup.sh> <parallel_opts> <niter> <keys> <model_int_dir> <model_out_dir>"
-    exit 1
+    echo "usage: $0 <setup.sh> <parallel_opts> <niter> <keys> <model_int_dir> <model_out_dir> "
+    echo "                                                                                    "
+    echo "Train the infinite phone-loop model.                                                "
+    echo "                                                                                    "
+    exit 0 
 fi
 
 setup="$1"

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
 if [ $# -ne 5 ]; then
-    echo ""
-    echo "Label a data set with the infinite phone-loop model."
-    echo ""
-    echo "usage: $0 <setup.sh> <parallel_opts>  <keys> <model_dir> <label_dir>"
-    exit 1
+    echo "usage: $0 <setup.sh> <parallel_opts>  <keys> <model_dir> <label_dir> "
+    echo "                                                                     "
+    echo "Label a data set with the infinite phone-loop model.                 "
+    echo "                                                                     "
+    exit 0 
 fi
 
 setup="$1"

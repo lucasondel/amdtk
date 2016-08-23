@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 
 if [ $# -ne 5 ]; then
-    echo "usage: $0 <setup.sh> <parallel_opts> <keys> <model_dir> <out_dir>"
-    echo ""
-    echo "Single iteration for retraiing the phone-loop model with a bigram language model."
-    echo ""
-    exit 1
+    echo "usage: $0 <setup.sh> <parallel_opts> <keys> <model_dir> <out_dir> "
+    echo "                                                                  "
+    echo "Single iteration for retraiing the phone-loop model with a bigram "
+    echo "language model.                                                   "
+    echo "                                                                  "
+    exit 0
 fi
 
 setup="$1"

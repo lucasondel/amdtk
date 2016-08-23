@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
 if [ $# -ne 6 ]; then
-    echo "usage: $0 <setup.sh> <parallel_opts> <niter> <keys> <model_int_dir> <model_out_dir>"
-    echo ""
-    echo "Retrain the phone-loop model with a bigram language model."
-    echo ""
-    exit 1
+    echo "usage: $0 <setup.sh> <parallel_opts> <niter> <keys> <model_int_dir> <model_out_dir>  "
+    echo "                                                                                     "
+    echo "Retrain the phone-loop model with a bigram language model.                           "
+    echo "                                                                                     "
+    exit 0
 fi
 
 setup="$1"

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
 if [ $# -ne 3 ]; then
-    echo ""
-    echo "Create and initialize an infinite phone-loop model."
-    echo ""
-    echo "usage: $0 <setup.sh> <keys> <outdir>"
-    exit 1
+    echo "usage: $0 <setup.sh> <keys> <outdir>                "
+    echo "                                                    "
+    echo "Create and initialize an infinite phone-loop model. "
+    echo "                                                    "
+    exit 0 
 fi
 
 setup="$1"

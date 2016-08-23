@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
 if [ $# -ne 5 ]; then
-    echo ""
-    echo "Run one iteration of the VB training for the phone-loop"
-    echo ""
-    echo "usage: $0 <setup.sh> <parallel_opts> <keys> <model_in_dir> <model_out_dir>"
-    exit 1
+    echo "usage: $0 <setup.sh> <parallel_opts> <keys> <model_in_dir> <model_out_dir> "
+    echo "                                                                           "
+    echo "Run one iteration of the VB training for the phone-loop.                   "
+    echo "                                                                           "
+    exit 0 
 fi
 
 setup="$1"

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
 if [ $# -ne 2 ]; then
-    echo ""
-    echo "Extract the features for the whole database."
-    echo ""
-    echo "usage: $0 <setup.sh> <parallel_opts>"
+    echo "usage: $0 <setup.sh> <parallel_opts>           "
+    echo "                                               "
+    echo "Extract the features for the whole database.   "
+    echo "                                               "
     exit 1
 fi
 
