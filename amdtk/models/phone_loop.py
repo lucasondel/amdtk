@@ -18,7 +18,7 @@ from ..models import HmmGraph
 from ..models import MixtureStats
 from ..models import GaussianDiagCovStats
 
-# Watchout before changing this as we expect the silence name to be 
+# Watchout before changing this as we expect the silence name to be
 # lower (alphabetically speaking) than the unit prefix.
 UNIT_PREFIX = 'a'
 SILENCE_NAME = 'sil'
@@ -101,19 +101,26 @@ class BayesianInfinitePhoneLoop(object):
         for i, unit_name in enumerate(self.unit_names):
             self.unit_name_index[unit_name] = i
 
+        self.bigram = None
+
+        self.updateWeights()
+
+    def setBigramLM(self, bigram):
+        self.bigram = bigram
         self.updateWeights()
 
     def updateWeights(self):
         """Update the weights of the phone loop."""
-        log_pi = self.posterior.expLogPi()
-        weights = {}
+        if self.bigram is None:
+            log_pi = self.posterior.expLogPi()
+            weights = {}
+            for i, unit_name in enumerate(self.unit_names):
+                weights[unit_name] = log_pi[i]
+            self.dgraph.setUnigramWeights(weights)
+        else:
+            self.dgraph.setBigramWeights(self.bigram)
 
-        for i, unit_name in enumerate(self.unit_names):
-            weights[unit_name] = log_pi[i]
-
-        self.dgraph.setUnigramWeights(weights)
-
-    def evalAcousticModel(self, X):
+    def evalAcousticModel(self, X, ac_weight=1.0):
         """Compute the expected value of the log-likelihood of the
         acoustic model of the phone loop.
 
@@ -121,6 +128,8 @@ class BayesianInfinitePhoneLoop(object):
         ----------
         X : numpy.ndarray
             Data matrix of N frames with D dimensions.
+        ac_weight : float
+            Scaling of the acoustic scores.
 
         Returnsgmm_log_P_Zs
         -------

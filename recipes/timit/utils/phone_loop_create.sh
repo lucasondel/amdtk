@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
 
-#
-# Create and initialize an inifinite phone-loop model.
-#
-
-if [ $# -ne 2 ]; then
-    echo "usage: $0 <setup.sh> <outdir>"
-    exit 1
+if [ $# -ne 3 ]; then
+    echo "usage: $0 <setup.sh> <keys> <outdir>                "
+    echo "                                                    "
+    echo "Create and initialize an infinite phone-loop model. "
+    echo "                                                    "
+    exit 0 
 fi
 
-setup=$1
-out_dir=$2
+setup="$1"
+keys="$2"
+out_dir="$3"
 
 source $setup || exit 1
 
 if [ ! -e "$out_dir/.done" ]; then
-    mkdir "$out_dir"
+    mkdir -p "$out_dir"
 
     # Create the list of features files for the train set.
     while read line; do
-        echo "$fea_dir/$line.$fea_ext" >> "$out_dir"/fea.list
-    done < "$train_keys"
+        echo "$fea_dir/$line.$fea_ext" >> "$out_dir/fea.list"
+    done < "$keys"
 
     # Get the mean and covariance of the data to initialize the model.
     # For huge database it is probably better to estimate these
@@ -32,12 +32,16 @@ if [ ! -e "$out_dir/.done" ]; then
     # These means are sampled from the a Gaussian distribution with mean
     # and covariance of the database.
     amdtk_ploop_create \
+        --sil_ngauss "$sil_ngauss" \
         --concentration "$concentration" \
         --truncation "$truncation" \
         --nstates "$nstates" \
         --ncomponents "$ncomponents" \
-        --sil_ngauss "$sil_ngauss" \
-        "$out_dir/stats" "$out_dir/model.bin"
+        --alpha "$alpha" \
+        --kappa "$kappa" \
+        --a "$a" \
+        --b "$b" \
+        "$out_dir/stats" "$out_dir/model.bin" || exit 1
 
     date > "$out_dir/.done"
 else

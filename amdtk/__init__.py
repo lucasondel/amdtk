@@ -26,5 +26,3 @@ from .core import sampleNgramLM
 from .core import resampleNgramLM
 from .core import NgramLMLogLikelihood
 from .core  import samplePathFromFst
-
-from .core.lm_controller import word_tokenize, char_tokenize, phone_tokenize

@@ -17,7 +17,7 @@ def main():
     args = parser.parse_args()
 
     model = pickle.load(args.model)
-    model.lm = pickle.load(args.lm)
+    model.setBigramLM(pickle.load(args.lm))
     pickle.dump(model, args.output)
 
 if __name__ == '__main__':

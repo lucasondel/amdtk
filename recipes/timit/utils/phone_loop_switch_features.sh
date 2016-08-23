@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
 
-#
-# Initialize a phone loop model on a new set of features.
-#
-
-if [ $# -ne 5 ]; then
-    echo "usage: $0 <setup.sh> <model_dir> <new_fea_dir> <new_model_dir> <out_dir>"
+if [ $# -ne 7 ]; then
+    echo ""
+    echo "Initialize a phone loop model on a new set of features."
+    echo ""
+    echo "usage: $0 <setup.sh> <parallel_opts> <keys>  <model_dir> <new_fea_dir> <new_model_dir> <out_dir>"
     exit 1
 fi
 
 setup="$1"
-model="$2/model.bin"
-new_fea_dir=$3
-new_model="$4/model.bin"
-out_dir="$5"
+parallel_opts="$2"
+keys="$3"
+model="$4/model.bin"
+new_fea_dir="$5"
+new_model="$6/model.bin"
+out_dir="$7"
 
 source $setup || exit 1
 
@@ -24,9 +25,9 @@ if [ ! -e $out_dir/.done ]; then
     # latent variables.
     amdtk_run $parallel_profile \
         --ntasks "$parallel_n_core" \
-        --options "$train_parallel_opts" \
+        --options "$parallel_opts" \
         "pl-vbexp" \
-        "$train_keys" \
+        "$keys" \
         "amdtk_ploop_exp --new_feats=$new_fea_dir/\$ITEM1.$fea_ext \
             $model $fea_dir/\$ITEM1.$fea_ext \
             $out_dir/\$ITEM1.acc" \

@@ -4,8 +4,10 @@
 import numpy as np
 from numpy.random import multinomial, gamma, beta, uniform
 import random
-from .hierarchical_language_model import HierarchicalLanguageModel
-from .hierarchical_language_model import EMPTY_CONTEXT
+
+EMPTY_CONTEXT = tuple([-1])
+SEQ_END_LABEL, SEQ_END = "</s>", 1
+VOCAB_START = 2
 
 
 class PitmanYorProcess(object):
@@ -26,19 +28,6 @@ class PitmanYorProcess(object):
         Parent of the PYP if the current PY is part of a hierarchy.
     num_tables : int
         Number of tables allocated. Some of them may be empty.
-
-    Methods
-    -------
-    removeCustomer(dish)
-        Remove a customer eating 'dish'.
-    chooseTable(dish)
-        Choose a table where 'dish' is served or allocate a new one.
-    addCustomer(dish)
-        Add a customer in the restaurant and serve her a dish.
-    serveDish(dish, remove_customer=False)
-        Add a customer to the restaurant.
-    predictiveProbability(dish)
-        Probability of a dish given the current seating arrangement.
 
     """
 
@@ -246,11 +235,12 @@ class PitmanYorProcess(object):
                 c_uwk = self.tables[table_for_dish]
                 if c_uwk > 2:
                     for j in range(1, c_uwk):
-                        Zuwkj = uniform() < (j -1)/(j - self.d)
+                        Zuwkj = uniform() < (j - 1) / (j - self.d)
                         sum_one_minus_Zuwkj += 1-Zuwkj
         return sum_one_minus_Zuwkj
 
-class HierarchicalPitmanYorProcess(HierarchicalLanguageModel):
+
+class HierarchicalPitmanYorProcess(object):
     """ Hierarchical Pitmay-Yor Process (HPYP) based language model.
 
     Attributes
@@ -261,15 +251,6 @@ class HierarchicalPitmanYorProcess(HierarchicalLanguageModel):
         Hierarchy of :class:`PitmanYorProcess`.
     order : int
         Order of the language model (i.e. hierarchy).
-
-    Methods
-    -------
-    __getitem__(key)
-        Index operator to access a specific level of the hierarchy.
-    addRestaurant(level, context):
-        Add a restaurant, i.e. a PYP, for a given context.
-    predictiveProbability(self, level, context, dish)
-        Probability of a dish given the current seating arrangement.
 
     """
 
@@ -291,8 +272,17 @@ class HierarchicalPitmanYorProcess(HierarchicalLanguageModel):
         """
         self.params = params
         discount, concentration = params[0]
-        super(self.__class__, self).__init__(len(params)-1, vocab)
+        self.order = len(params) - 1
+        self.hierarchy = [{} for i in range(self.order + 1)]
+        self.vocab = vocab
         self.hierarchy[0][EMPTY_CONTEXT] = PitmanYorProcess(*params[0], G0=G0)
+
+    def __getitem__(self, key):
+        if type(key) != int:
+            raise TypeError()
+        if key < 0 or key >= len(self.params):
+            raise IndexError()
+        return self.hierarchy[key]
 
     def addRestaurant(self, level, context):
         """Add a restaurant, i.e. a PYP, for a given context.
