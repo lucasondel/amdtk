@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # 
-# Acoustic Unit Discovery based on infinite phone-loop model.
+# Acoustic Unit Discovery based on an infinite phone-loop model.
 #
 
 if [ $# -ne 1 ] 
@@ -72,33 +72,5 @@ utils/phone_loop_bigram_retrain.sh \
     $train_keys \
     $root/$model_type/unigram \
     $root/$model_type/bigram || exit 1
-echo done
-
-exit 0
-
-echo "($((++n))) Labeling the unigram model..."
-utils/phone_loop_label.sh $setup  $root/$model_type/unigram \
-    $root/$model_type/unigram_labels || exit 1
-echo done
-
-echo "($((++n))) Scoring the unigram model..."
-utils/score_labels.sh $setup $root/$model_type/unigram_labels \
-    $root/$model_type/score_unigram || exit 1
-echo done
-
-echo "($((++n))) Retraining the phone loop with a bigram LM..."
-echo "path: $root/$model_type/bigram"
-utils/phone_loop_retrain_1best.sh $setup 10 $root/$model_type/unigram \
-    $root/$model_type/bigram || exit 1
-echo done
-
-echo "($((++n))) Labeling the bigram model..."
-utils/phone_loop_label.sh $setup  $root/$model_type/bigram \
-    $root/$model_type/bigram_labels || exit 1
-echo done
-
-echo "($((++n))) Scoring the bigram model..."
-utils/score_labels.sh $setup $root/$model_type/bigram_labels \
-    $root/$model_type/score_bigram || exit 1
 echo done
 
