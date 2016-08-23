@@ -41,6 +41,11 @@ while getopts ":e:hp:" opt; do
     esac
 done
 
+if [ ! -e "$anaconda_path/bin/python" ]; then
+    echo "Invalid anaconda path. Exiting the installation script."
+    exit 1
+fi
+
 # Directory where we will install the external tools.
 mkdir -p $amdtk_root/tools
 
@@ -50,29 +55,37 @@ unset PYTHONPATH
 export PATH=$anaconda_path/bin:$PATH
 
 # We create a specific environment for AMDTK if it doesn't exists.
-echo -n "Installing anaconda environment \"$env_name\"... "
+echo "Installing anaconda environment \"$env_name\"... "
 if [ -z "`conda env list | grep $env_name`" ]; then
-    conda env create --name $env_name python=3 -f $amdtk_root/py35_amdtk.yml
+    conda env create --name $env_name python=3 -f "$amdtk_root/py35_amdtk.yml"
 fi || exit 1
-echo "done"
+
+# Install sselogsumexp.
+echo "Installing sselogsumexp... "
+if [ ! -e "$amdtk_root/tools/logsumexp" ]; then
+    cd "$amdtk_root/tools"
+    git clone "https://github.com/rmcgibbo/logsumexp.git" 
+    cd logsumexp
+    python setup.py install 
+    cd "$amdtk_root"
+fi || exit 1
 
 # Download and install sph2pipe. This is needed for features extraction.
-echo -n "Installing sph2pipe... "
+echo "Installing sph2pipe... "
 if [ ! -e $amdtk_root/tools/sph2pipe_v2.5.tar.gz ]; then    
-    wget -P $amdtk_root/tools "https://www.ldc.upenn.edu/sites/www.ldc.upenn.edu/files/ctools/sph2pipe_v2.5.tar.gz" --no-check-certificate
+    wget -P $amdtk_root/tools "https://www.ldc.upenn.edu/sites/www.ldc.upenn.edu/files/ctools/sph2pipe_v2.5.tar.gz" --no-check-certificate 
 fi || exit 1
 
 if [ ! -e $amdtk_root/tools/sph2pipe_v2.5 ]; then
-    tar xvf $amdtk_root/tools/sph2pipe_v2.5.tar.gz
+    tar xvf $amdtk_root/tools/sph2pipe_v2.5.tar.gz 
     mv $amdtk_root/sph2pipe_v2.5 $amdtk_root/tools
     cd $amdtk_root/tools/sph2pipe_v2.5
-    gcc -o sph2pipe *.c -lm
+    gcc -o sph2pipe *.c -lm 
     cd ../../
 fi || exit 1
-echo "done"
 
 
-echo -n "Creating path file... "
+echo "Creating path file... "
 new_path="$amdtk_root/scripts:$amdtk_root/tools/sph2pipe_v2.5:\$PATH"
 # Create the path.sh file to use the newly created environment.
 cp "$amdtk_root/path_template.sh" "$amdtk_root/tools/path.sh" || exit 1
@@ -85,10 +98,14 @@ echo "export PATH=$new_path:$PATH              " >> "$amdtk_root/tools/path.sh"
 echo "                                         " >> "$amdtk_root/tools/path.sh"
 echo "# Selecting the AMDTK environment.       " >> "$amdtk_root/tools/path.sh"
 echo "source activate $env_name                " >> "$amdtk_root/tools/path.sh"
-echo "done"
+echo "                                         " >> "$amdtk_root/tools/path.sh"
+echo "# Disable multithreading.                " >> "$amdtk_root/tools/path.sh"
+echo "export OPENBLAS_NUM_THREADS=1            " >> "$amdtk_root/tools/path.sh"
+echo "export OMP_NUM_THREDS=1                  " >> "$amdtk_root/tools/path.sh" 
+echo "export MKL_NUM_THREADS=1                 " >> "$amdtk_root/tools/path.sh"
 
 # Install the recipes.
-echo -n "Installing recipes... "
+echo "Installing recipes... "
 # timit recipe
 cp "$amdtk_root/tools/path.sh" "$amdtk_root/recipes/timit" || exit 1
 # wsj recipe
@@ -99,6 +116,5 @@ cp "$amdtk_root/tools/path.sh" "$amdtk_root/recipes/babel_turkish_clsp" || exit 
 ln -fs "$amdtk_root/recipes/timit/utils" "$amdtk_root/recipes/babel_turkish_clsp/utils" || exit 1
 # WSJ no punctuation recipe
 cp "$amdtk_root/tools/path.sh" "$amdtk_root/recipes/wsj_no_punc" || exit 1
-ln -fs "$amdtk_root/recipes/timit/utils $amdtk_root/recipes/wsj_no_punc/utils" || exit 1
-echo done
+ln -fs "$amdtk_root/recipes/timit/utils" "$amdtk_root/recipes/wsj_no_punc/utils" || exit 1
 
