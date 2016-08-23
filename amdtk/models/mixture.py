@@ -71,7 +71,7 @@ class BayesianMixture(DiscreteLatentModel):
         self.prior = Dirichlet(alphas)
         self.posterior = Dirichlet(alphas.copy())
 
-    def expLogLikelihood(self, X):
+    def expLogLikelihood(self, X, weight=1.0):
         """Expected value of the log-likelihood of the data given the
         model.
 
@@ -79,6 +79,8 @@ class BayesianMixture(DiscreteLatentModel):
         ----------
         X : numpy.ndarray
             Data matrix of N frames with D dimensions.
+        weight : float
+            Scaling weight for the log-likelihood
 
         Returns
         -------
@@ -92,7 +94,9 @@ class BayesianMixture(DiscreteLatentModel):
         E_log_weights = self.posterior.expLogPi()
         E_log_p_X = np.zeros((X.shape[0], self.k))
         for i, pdf in enumerate(self.components):
-            E_log_p_X[:, i] += E_log_weights[i] + pdf.expLogLikelihood(X)
+            E_log_p_X[:, i] += E_log_weights[i]
+            E_log_p_X[:, i] += pdf.expLogLikelihood(X)
+            E_log_p_X[:, i] *= weight
         log_norm = logsumexp(E_log_p_X, axis=1)
         E_log_P_Z = (E_log_p_X.T - log_norm).T
         return log_norm, E_log_P_Z

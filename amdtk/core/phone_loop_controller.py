@@ -8,7 +8,7 @@ from ..models import MixtureStats
 from ..models import GaussianDiagCovStats
 
 
-def phoneLoopVbExpectation(model, X, Y=None):
+def phoneLoopVbExpectation(model, X, Y=None, ac_weight=1.0):
     """Estimate the expected value of the different latent variables of
     the model.
 
@@ -22,6 +22,8 @@ def phoneLoopVbExpectation(model, X, Y=None):
     Y : numpy.ndarray
         Data on which to compute the accumulated statistics. If none
         the statistics will be accumulated on 'X'.
+    ac_weight : float
+            Scaling of the acoustic scores.
 
     Returns
     -------
@@ -31,7 +33,7 @@ def phoneLoopVbExpectation(model, X, Y=None):
 
     """
     # Evaluate the log-likelihood of the acoustic model.
-    am_llhs, gmm_log_P_Zs = model.evalAcousticModel(X)
+    am_llhs, gmm_log_P_Zs = model.evalAcousticModel(X, ac_weight=ac_weight)
 
     # Forward-backward algorithm.
     E_log_P_X, hmm_log_P_Z, unit_log_resps = model.forwardBackward(am_llhs)

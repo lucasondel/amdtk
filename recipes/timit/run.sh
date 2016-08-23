@@ -25,26 +25,34 @@ fi
 
 n=0 
 
+echo "===================================================="
 echo "($((++n))) Data preparation..."
+echo "===================================================="
 local/prepare_data.sh \
     $setup || exit 1
 #local/prepare_data_clsp.sh $setup || exit 1 # Use this on clsp grid
 echo done
 
+echo "===================================================="
 echo "($((++n))) Features extraction..."
+echo "===================================================="
 utils/extract_features_db.sh \
     $setup \
     "-q $queues -l matylda5=0.3" || exit 1
 echo done
 
+echo "===================================================="
 echo "($((++n))) Creating the model..."
+echo "===================================================="
 utils/phone_loop_create.sh \
     $setup \
     $train_keys \
     $root/$model_type/initial_model || exit 1
 echo done
 
+echo "===================================================="
 echo "($((++n))) Training the model with unigram LM..."
+echo "===================================================="
 utils/phone_loop_train.sh \
     $setup \
     "-q $queues -l matylda5=0.5" \
@@ -52,6 +60,18 @@ utils/phone_loop_train.sh \
     $train_keys \
     $root/$model_type/initial_model \
     $root/$model_type/unigram || exit 1
+echo done
+
+echo "===================================================="
+echo "($((++n))) Training the model with biigram LM..."
+echo "===================================================="
+utils/phone_loop_bigram_retrain.sh \
+    $setup \
+    "-q $queues -l matylda5=0.5" \
+    10 \
+    $train_keys \
+    $root/$model_type/unigram \
+    $root/$model_type/bigram || exit 1
 echo done
 
 exit 0

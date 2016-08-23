@@ -120,7 +120,7 @@ class BayesianInfinitePhoneLoop(object):
         else:
             self.dgraph.setBigramWeights(self.bigram)
 
-    def evalAcousticModel(self, X):
+    def evalAcousticModel(self, X, ac_weight=1.0):
         """Compute the expected value of the log-likelihood of the
         acoustic model of the phone loop.
 
@@ -128,6 +128,8 @@ class BayesianInfinitePhoneLoop(object):
         ----------
         X : numpy.ndarray
             Data matrix of N frames with D dimensions.
+        ac_weight : float
+            Scaling of the acoustic scores.
 
         Returnsgmm_log_P_Zs
         -------

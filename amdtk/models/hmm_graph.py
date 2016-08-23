@@ -3,8 +3,7 @@ import numpy as np
 from scipy.misc import logsumexp
 import pyximport
 
-pyximport.install(setup_args={"include_dirs":np.get_include()})
-
+pyximport.install(setup_args={"include_dirs": np.get_include()})
 from .hmm_graph_utils import _fast_logsumexp_axis1
 
 
@@ -269,7 +268,7 @@ class HmmGraph(object):
         for state in self.states:
             state.model = name_model[state.name]
 
-    def evaluateEmissions(self, X):
+    def evaluateEmissions(self, X, ac_weight=1.0):
         """Evalue the (expected value of the )log-likelihood of each
         emission probability model.
 
@@ -277,6 +276,8 @@ class HmmGraph(object):
         ----------
         X : numpy.ndarray
             Data matrix of N frames with D dimensions.
+        ac_weight : float
+            Scaling of the acoustic scores.
 
         Returns
         -------
@@ -291,7 +292,7 @@ class HmmGraph(object):
                                      dtype=np.float32)
         log_resps = []
         for i, state in enumerate(self.states):
-            llh, log_resp = state.model.expLogLikelihood(X)
+            llh, log_resp = state.model.expLogLikelihood(X, ac_weight)
             E_log_p_X_given_Z[:, i] = llh
             log_resps.append(log_resp)
 

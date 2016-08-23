@@ -6,6 +6,7 @@ import string
 import pywrapfst as fst
 from ..models.hpyp import EMPTY_CONTEXT
 from ..models.hpyp import VOCAB_START
+from ..models.hierarchical_language_model import SPECIAL_VOCAB
 from ..models.hpyp import SEQ_END
 
 
@@ -18,13 +19,8 @@ class LMParamsStringBadlyFormatted(Exception):
         return repr(self.value)
 
 
-def unitTokenize(text):
-    """Tokenize the output ot the acoustic unit discovery,
-    where acoustic units are named a1, a2, ...
-    Note that we discard whitespace
-    """
-    return ['a' + ele.strip()
-            for i, ele in enumerate(text.lower().strip().split('a')) if i > 0]
+def wordTokenize(text):
+    return text.lower().strip().split()
 
 
 def removeSentenceMarker(text):
@@ -65,7 +61,7 @@ def parseLMParams(str):
     return [parse(s) for s in str.split(':')]
 
 
-def textToInt(vocab, text, tokenize=unitTokenize):
+def textToInt(vocab, text, tokenize=wordTokenize):
     """Convert space separated tokens to integer.
 
     Parameters
@@ -95,7 +91,7 @@ def textToInt(vocab, text, tokenize=unitTokenize):
 
 
 def getVocabFromText(data_text, remove_punctuation=True,
-                     tokenize=unitTokenize):
+                     tokenize=wordTokenize):
     """Get vocabulary from the given text.
 
     Parameters
@@ -130,7 +126,7 @@ def getVocabFromText(data_text, remove_punctuation=True,
 
 
 def prepareText(data_text, vocab=None, remove_punctuation=True,
-                tokenize=unitTokenize):
+                tokenize=wordTokenize):
     """Prepare text to build HPYP LM.
 
     Parameters
@@ -163,12 +159,7 @@ def prepareText(data_text, vocab=None, remove_punctuation=True,
             translator = line.maketrans({key: None for key in
                                         string.punctuation})
             line = line.translate(translator)
-            if tokenize == unitTokenize:
-                # each 'word' should become a separate line
-                for part in line.split():
-                    data_int.append(textToInt(vocab, part, tokenize))
-            else:
-                data_int.append(textToInt(vocab, line, tokenize))
+            data_int.append(textToInt(vocab, line, tokenize))
 
     return data_int
 

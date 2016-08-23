@@ -5,7 +5,7 @@
 import argparse
 import pickle
 import amdtk
-from amdtk.models.hierarchical_language_model import VOCAB_START
+from amdtk.models.hpyp import VOCAB_START
 from amdtk.models import HierarchicalPitmanYorProcess
 
 
@@ -17,25 +17,14 @@ def main():
                         help="Activate hyperparameter resampling. This" +
                              " updates concentration and discount for" +
                              " every level of the hierarchy (default: False).")
-    parser.add_argument("--tokenizer", choices=["word", "char", "phone"],
-                        default="word")
     parser.add_argument("params", help="parameters for each level of the "
                                        "HPYP as column separated string: d0,"
                                        "c0:d1,c1:...")
     parser.add_argument("vocab", help="list of unique word in the corpus")
     parser.add_argument('text', help='text to train the LM on')
     parser.add_argument('out', help='output model')
-    parser.add_argument('symbols_file', type=str,
-                        default="syms.txt", nargs='?')
 
     args = parser.parse_args()
-
-    if args.tokenizer == "phone":
-        tokenizer = amdtk.phone_tokenize
-    elif args.tokenizer == "char":
-        tokenizer = amdtk.char_tokenize
-    else:
-        tokenizer = amdtk.word_tokenize
 
     # Load the vocabulary.
     vocab = {}
@@ -47,7 +36,7 @@ def main():
     with open(args.text, 'r') as f:
         data_text = f.readlines()
 
-    data_int = amdtk.prepareText(data_text, vocab, tokenize=tokenizer)
+    data_int = amdtk.prepareText(data_text, vocab)
 
     # Load the parameters of the HPYP.
     hpyp_params = amdtk.parseLMParams(args.params)
@@ -65,7 +54,7 @@ def main():
         amdtk.sampleNgramLM(model, data_int)
         llh = amdtk.NgramLMLogLikelihood(model, data_int)
         print("iteration:", i+1, "log-likelihood:", llh)
-        if args.resample:
+        if args.resample_hparams:
             model.resampleAllHyperparameters()
             model.printOutHyperparameters()
 
