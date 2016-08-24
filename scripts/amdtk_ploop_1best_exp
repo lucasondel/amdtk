@@ -17,11 +17,11 @@ def main():
     parser.add_argument('feats', help='features file')
     parser.add_argument('out', help='accumulated statistics')
     args = parser.parse_args()
-    
+
     # Load the model.
     with open(args.model, 'rb') as f:
         model = pickle.load(f)
-        
+
     # Load the sequence of units.
     data = amdtk.readHtkLabels(args.best_path)
     best_path = []
@@ -31,11 +31,10 @@ def main():
     # Load the features.
     X = amdtk.readHtk(args.feats)
 
-    # COmpute the 1-Best expectation.
-    E_log_p_X, stats = amdtk.phoneLoopVb1BestExpectation(model, X, 
-                                                         best_path)
+    # Compute the 1-Best expectation.
+    E_log_p_X, stats = amdtk.phoneLoopVb1BestExpectation(model, best_path, X)
 
-    # Dump the accumulate statistics.   
+    # Dump the accumulate statistics.
     with open(args.out, 'wb') as f:
         pickle.dump((E_log_p_X, stats), f)
 
