@@ -10,6 +10,8 @@ import amdtk
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--ac_weight', type=float, default=1.0,
+                        help='scaling of the acoustic score')
     parser.add_argument('--hmm_states', action='store_true',
                         help='output the hmm states posteriors')
     parser.add_argument('model', help='model to fit on the data')
@@ -25,7 +27,8 @@ def main():
     X, infos = amdtk.readHtk(args.feats, infos=True)
 
     # Compute the forward-backward per-frame posteriors.
-    p = amdtk.phoneLoopForwardBackwardPosteriors(model, X,
+    p = amdtk.phoneLoopForwardBackwardPosteriors(model, X, 
+                                                 ac_weight=args.ac_weight,
                                                  output_states=args.hmm_states)
 
     # Dump the posteriors on the disk.

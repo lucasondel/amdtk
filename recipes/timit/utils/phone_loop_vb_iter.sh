@@ -21,8 +21,7 @@ if [ ! -e $out_dir/.done ]; then
     
     # VB E-step: estimate the posterior distribution of the
     # latent variables.
-    amdtk_run \
-        $parallel_profile \
+    amdtk_run $parallel_profile \
         --ntasks "$parallel_n_core" \
         --options "$parallel_opts" \
         "pl-vbexp" \
@@ -51,6 +50,6 @@ if [ ! -e $out_dir/.done ]; then
 
     date > "$out_dir/.done"
 else
-    echo "Iteration $i has already been done. Skipping."
+    echo "Iteration has already been done. Skipping."
 fi
 

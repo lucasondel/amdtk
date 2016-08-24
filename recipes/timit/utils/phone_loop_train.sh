@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
 if [ $# -ne 6 ]; then
-    echo "usage: $0 <setup.sh> <parallel_opts> <niter> <keys> <model_int_dir> <model_out_dir> "
-    echo "                                                                                    "
-    echo "Train the infinite phone-loop model.                                                "
-    echo "                                                                                    "
+    echo "usage: $0 <setup.sh> <parallel_opts> <niter> <keys> <model_in_dir> <model_out_dir> "
+    echo "                                                                                   "
+    echo "Train the infinite phone-loop model.                                               "
+    echo "                                                                                   "
     exit 0 
 fi
 
@@ -38,7 +38,7 @@ if [ ! -e $out_dir/.done ]; then
             "$parallel_opts" \
             "$keys" \
             "$out_dir/iter$((i - 1))" \
-            "$out_dir/iter$i"
+            "$out_dir/iter$i" || exit 1
 
         echo "iteration: $i log-likelihood >= $(cat $out_dir/iter$i/llh.txt)"|| exit 1
     done
