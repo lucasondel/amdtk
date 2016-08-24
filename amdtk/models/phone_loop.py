@@ -74,6 +74,8 @@ class BayesianInfinitePhoneLoop(object):
         else:
             nunits = truncation
 
+        self.nstates = nstates
+
         self.prior = tdp
         self.posterior = copy.deepcopy(tdp)
         self.dgraph = HmmGraph.standardPhoneLoop(UNIT_PREFIX, nunits,
@@ -120,6 +122,18 @@ class BayesianInfinitePhoneLoop(object):
         else:
             self.dgraph.setBigramWeights(self.bigram)
 
+    def setLinearDecodingGraph(self, seq):
+        """Set the decoding graph to a linear sequence.
+
+        Parameters
+        ----------
+        seq : list
+            Sequence of unit.
+
+        """
+        self.dgraph = HmmGraph.linearSequence(seq, self.nstates)
+        self.dgraph.setEmissions(self.name_model)
+
     def evalAcousticModel(self, X, ac_weight=1.0):
         """Compute the expected value of the log-likelihood of the
         acoustic model of the phone loop.
@@ -140,7 +154,7 @@ class BayesianInfinitePhoneLoop(object):
             the statistics.
 
         """
-        return self.dgraph.evaluateEmissions(X)
+        return self.dgraph.evaluateEmissions(X, ac_weight=ac_weight)
 
     def forwardBackward(self, am_llhs):
         """Forward-backward algorithm of the phone-loop.
@@ -179,7 +193,7 @@ class BayesianInfinitePhoneLoop(object):
         # convergence of the training.
         E_log_P_X = logsumexp(log_alphas[-1])
 
-        return E_log_P_X, log_P_Z, resp_units
+        return E_log_P_X, log_P_Z, np.log(resp_units)
 
     def viterbi(self, am_llhs, output_states=False):
         """Viterbi algorithm.
@@ -248,7 +262,6 @@ class BayesianInfinitePhoneLoop(object):
                     gauss_stats[key][j] += \
                         GaussianDiagCovStats(X, weights[:, j])
 
-
         return tdp_stats, gmm_stats, gauss_stats
 
     def KLPosteriorPrior(self):
@@ -289,4 +302,3 @@ class BayesianInfinitePhoneLoop(object):
             for j, stats in data.items():
                 gmm.components[j].updatePosterior(stats)
         self.updateWeights()
-

@@ -182,7 +182,6 @@ class HmmGraph(object):
             (starting from 1).
         nunits : int
             Number of units in the phone loop.
-
         nstates : int
             Number of state in each left-to-right HMM representing a
             single unit.
@@ -207,6 +206,48 @@ class HmmGraph(object):
         for final_state in graph.final_states:
             for init_state in graph.init_states:
                 graph.addLink(final_state, init_state)
+
+        graph._prepare()
+
+        return graph
+
+    @classmethod
+    def linearSequence(cls, seq, nstates):
+        """Create the HMM corresponding to a unit-loop model.
+
+        Each unit is represented by a left-to-right hmm.
+
+        Parameters
+        ----------
+        seq : str
+            Sequence of name for the linear graph.
+        nstates : int
+            Number of state in each left-to-right HMM representing a
+            single unit.
+
+        Returns
+        -------
+        hmm : :class:`HmmGraph`
+            An initialized HMM.
+
+        """
+        graph = cls()
+
+        previous_hmm = None
+        for i, unit_name in enumerate(seq):
+            hmm_graph = cls.leftToRightHmm(unit_name, nstates)
+            graph.sub_hmms.append(hmm_graph)
+            graph.id_state = {**graph.id_state, **hmm_graph.id_state}
+            graph.states += hmm_graph.states
+            if previous_hmm is not None:
+                src = previous_hmm.final_states[0]
+                dest = hmm_graph.init_states[0]
+                graph.addLink(src, dest)
+            previous_hmm = hmm_graph
+            if i == 0:
+                graph.init_states = hmm_graph.init_states
+            if i == len(seq) - 1:
+                graph.final_states = hmm_graph.final_states
 
         graph._prepare()
 
