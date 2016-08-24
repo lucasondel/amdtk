@@ -284,7 +284,7 @@ def main():
         print('Test utt IDs:', len(test_ids))
 
     # Dump the utts in respective documents
-    out_dir = os.path.realpath(pwd + "../../../../../../EVAL/topics/wsj/") + "/"
+    out_dir = os.path.realpath(pwd + "/EVAL/topics/wsj/") + "/"
     train_out = out_dir + "words/"
     test_out = out_dir + "words/"
 
