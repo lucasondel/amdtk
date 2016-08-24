@@ -23,6 +23,16 @@ else
   cp $setup $root/$model_type/setup.sh
 fi
 
+
+## local ## 
+parallel_opts="none" 
+
+## BUT - SGE ## 
+#parallel_opts="-q $queues -l matylda5=0.5"
+
+## CLSP - SGE ##
+#parallel_opts="-q $queues -l arch=\"*64\""
+
 n=0 
 
 echo "===================================================="

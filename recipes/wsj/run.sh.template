@@ -23,6 +23,16 @@ else
   cp $setup $root/$model_type/setup.sh
 fi
 
+
+## local ## 
+parallel_opts="none" 
+
+## BUT - SGE ## 
+#parallel_opts="-q $queues -l matylda5=0.5"
+
+## CLSP - SGE ##
+#parallel_opts="-q $queues -l arch=\"*64\""
+
 n=0 
 
 echo "===================================================="
@@ -54,7 +64,7 @@ echo "($((++n))) Training the model with unigram LM..."
 echo "===================================================="
 utils/phone_loop_train.sh \
     $setup \
-    "-q $queues -l matylda5=0.5" \
+    "$parallel_opts" \
     10 \
     $train_keys \
     $root/$model_type/initial_model \
