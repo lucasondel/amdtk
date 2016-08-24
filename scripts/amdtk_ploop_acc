@@ -43,6 +43,8 @@ def main():
                         gmm_stats0[j] = gmm_stats[j]
 
                 for key1, data in gaussian_stats.items():
+                    if key1 not in gaussian_stats0:
+                        gaussian_stats0[key1] = {}
                     for key2, stats in data.items():
                         try:
                             gaussian_stats0[key1][key2] += \
