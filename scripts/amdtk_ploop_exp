@@ -12,10 +12,10 @@ import amdtk
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--new_feats', help='features files on which to '
-                                            'accumulate the stats.')
     parser.add_argument('--ac_weight', type=float, default=1.0,
                         help='scaling of the acoustic score')
+    parser.add_argument('--new_feats', help='features files on which to '
+                                            'accumulate the stats.')
     parser.add_argument('model', help='model to fit on the data')
     parser.add_argument('feats', help='features file')
     parser.add_argument('out', help='accumulated statistics')
