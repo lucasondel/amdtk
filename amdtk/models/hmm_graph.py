@@ -212,7 +212,7 @@ class HmmGraph(object):
         return graph
 
     @classmethod
-    def linearSequence(cls, seq, nstates):
+    def linearSequence(cls, seq, nstates, share_name_units=[]):
         """Create the HMM corresponding to a unit-loop model.
 
         Each unit is represented by a left-to-right hmm.
@@ -224,6 +224,9 @@ class HmmGraph(object):
         nstates : int
             Number of state in each left-to-right HMM representing a
             single unit.
+        share_name_units : list
+            List of unit in the sequence that have shared name across
+            states.
 
         Returns
         -------
@@ -235,7 +238,9 @@ class HmmGraph(object):
 
         previous_hmm = None
         for i, unit_name in enumerate(seq):
-            hmm_graph = cls.leftToRightHmm(unit_name, nstates)
+            share_name = unit_name in share_name_units
+            hmm_graph = cls.leftToRightHmm(unit_name, nstates, 
+                                           share_name=share_name)
             graph.sub_hmms.append(hmm_graph)
             graph.id_state = {**graph.id_state, **hmm_graph.id_state}
             graph.states += hmm_graph.states

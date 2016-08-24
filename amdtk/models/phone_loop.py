@@ -131,7 +131,8 @@ class BayesianInfinitePhoneLoop(object):
             Sequence of unit.
 
         """
-        self.dgraph = HmmGraph.linearSequence(seq, self.nstates)
+        self.dgraph = HmmGraph.linearSequence(seq, self.nstates, 
+                                              share_name_units=[SILENCE_NAME])
         self.dgraph.setEmissions(self.name_model)
 
     def evalAcousticModel(self, X, ac_weight=1.0):
@@ -193,7 +194,7 @@ class BayesianInfinitePhoneLoop(object):
         # convergence of the training.
         E_log_P_X = logsumexp(log_alphas[-1])
 
-        return E_log_P_X, log_P_Z, np.log(resp_units)
+        return E_log_P_X, log_P_Z, np.log(resp_units + 1e-32)
 
     def viterbi(self, am_llhs, output_states=False):
         """Viterbi algorithm.
