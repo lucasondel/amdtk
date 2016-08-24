@@ -61,15 +61,3 @@ utils/phone_loop_train.sh \
     $root/$model_type/unigram || exit 1
 echo done
 
-echo "===================================================="
-echo "($((++n))) Training the model with biigram LM..."
-echo "===================================================="
-utils/phone_loop_bigram_retrain.sh \
-    $setup \
-    "-q $queues -l matylda5=0.5" \
-    10 \
-    $train_keys \
-    $root/$model_type/unigram \
-    $root/$model_type/bigram || exit 1
-echo done
-
