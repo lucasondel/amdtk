@@ -1,5 +1,21 @@
 #!/usr/bin/env bash
 
+det_annealing="no"
+while [[ $# > 6 ]]
+do
+    key="$1"
+    
+    case $key in
+	--det_annealing)
+	    det_annealing="yes"
+	    ;;
+	*)
+        # unknown option
+	    ;;
+    esac
+    shift # past argument or value
+done
+
 if [ $# -ne 6 ]; then
     echo "usage: $0 <setup.sh> <parallel_opts> <niter> <keys> <model_in_dir> <model_out_dir> "
     echo "                                                                                   "
@@ -37,6 +53,7 @@ if [ ! -e $out_dir/.done ]; then
             "$setup" \
             "$parallel_opts" \
             "$keys" \
+            "$unigram_ac_weight" \
             "$out_dir/iter$((i - 1))" \
             "$out_dir/iter$i" || exit 1
 

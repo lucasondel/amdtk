@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
 
-if [ $# -ne 5 ]; then
-    echo "usage: $0 <setup.sh> <parallel_opts> <keys> <model_in_dir> <model_out_dir> "
-    echo "                                                                           "
-    echo "Run one iteration of the VB training for the phone-loop.                   "
-    echo "                                                                           "
+if [ $# -ne 6 ]; then
+    echo "usage: $0 <setup.sh> <parallel_opts> <keys> <ac_weight> <model_in_dir> <model_out_dir> "
+    echo "                                                                                       "
+    echo "Run one iteration of the VB training for the phone-loop.                               "
+    echo "                                                                                       "
     exit 0 
 fi
 
 setup="$1"
 parallel_opts="$2"
 keys="$3"
-model="$4/model.bin"
-out_dir="$5"
+ac_weight="$4"
+model="$5/model.bin"
+out_dir="$6"
 
 source $setup || exit 1
 
@@ -26,8 +27,8 @@ if [ ! -e $out_dir/.done ]; then
         --options "$parallel_opts" \
         "pl-vbexp" \
         "$keys" \
-        "amdtk_ploop_exp $model $fea_dir/\$ITEM1.$fea_ext \
-        $out_dir/\$ITEM1.acc" \
+        "amdtk_ploop_exp --ac_weight=$ac_weight $model \
+            $fea_dir/\$ITEM1.$fea_ext $out_dir/\$ITEM1.acc" \
         "$out_dir" || exit 1
 
     # Accumulate the statistics. This step could be further
