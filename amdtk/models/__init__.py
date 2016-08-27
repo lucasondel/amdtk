@@ -8,6 +8,8 @@ from .discrete_latent_model import DiscreteLatentModel
 
 from .mixture import MixtureStats
 from .mixture import BayesianMixture
+from .mixture import DPMixture
+from .mixture import DPMixtureChild
 
 from .multivariate_gaussian import GaussianDiagCovStats
 from .multivariate_gaussian import BayesianGaussianDiagCov

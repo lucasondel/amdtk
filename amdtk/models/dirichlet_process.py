@@ -120,7 +120,7 @@ class TruncatedDirichletProcess(object):
 
         Parameters
         ----------
-        stats : :class:MultivariateGaussianDiagCovStats
+        stats : :class:`MixtureStats`
             Accumulated sufficient statistics for the update.
 
         Returns
@@ -128,4 +128,8 @@ class TruncatedDirichletProcess(object):
         post : :class:Dirichlet
             New Dirichlet density.
         """
-        return TruncatedDirichletProcess(self.g1+stats[0], self.g2+stats[1])
+        stats2 = np.zeros_like(stats[0])
+        for i in range(len(stats[0])-1):
+            stats2[i] += stats[0][i+1:].sum()
+        return TruncatedDirichletProcess(self.g1+stats[0], self.g2+stats2)
+        
