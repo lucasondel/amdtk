@@ -273,7 +273,7 @@ class HmmGraph(object):
         return parent_names, state_names
 
     def _computeLogProbInitStates(self):
-        state_log_pi = 1 / len(self.init_states)
+        state_log_pi = np.log(1 / len(self.init_states))
         self._state_log_pi = {}
         for state in self.init_states:
             self._state_log_pi[state] = state_log_pi
