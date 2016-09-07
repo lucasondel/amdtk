@@ -165,6 +165,9 @@ class HmmGraph(object):
                 graph.addLink(state, next_state)
 
         graph._prepare()
+        
+        # Correct the last element probability.
+        graph.addLink(graph.final_states[0], graph.final_states[0], np.log(0.5))
 
         return graph
 
@@ -207,7 +210,7 @@ class HmmGraph(object):
             for init_state in graph.init_states:
                 graph.addLink(final_state, init_state)
 
-        graph._prepare()
+        graph._prepare(normalize=False)
 
         return graph
 
@@ -569,7 +572,7 @@ class HmmGraph(object):
         self.init_states = [sil_init_state]
         self.final_states = [sil_final_state]
 
-        self._prepare()
+        self._prepare(normalize=False)
 
     def setUnigramWeights(self, weights):
         """Set unigram language model for the unit-loop HMM.
