@@ -9,6 +9,7 @@ from amdtk.models import InvalidModelError
 from amdtk.models import InvalidModelParameterError
 from amdtk.models import MissingModelParameterError
 from amdtk.models import Prior
+from amdtk.models import PriorStats
 
 
 class FakeModel(Model):
@@ -32,6 +33,8 @@ class TestNormalGammaStats(unittest.TestCase):
         weighted_X = self.weighted_X
 
         stats = NormalGammaStats(X, weights)
+
+        self.assertTrue(isinstance(stats, PriorStats))
 
         self.assertAlmostEqual(stats[0], weights.sum(), 'invalid stats')
         self.assertTrue(np.isclose(stats[1], weighted_X.sum(axis=0)).all(),

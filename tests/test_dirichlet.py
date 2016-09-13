@@ -9,6 +9,7 @@ from amdtk.models import InvalidModelError
 from amdtk.models import InvalidModelParameterError
 from amdtk.models import MissingModelParameterError
 from amdtk.models import Prior
+from amdtk.models import PriorStats
 
 
 class FakeModel(Model):
@@ -32,6 +33,8 @@ class TestDirichletStats(unittest.TestCase):
 
         stats = DirichletStats(X, weights)
 
+        self.assertTrue(isinstance(stats, PriorStats))
+
         self.assertTrue(np.isclose(stats[0], weighted_X.sum(axis=0)).all(),
                         'invalid stats')
 
@@ -54,7 +57,7 @@ class TestDirichletStats(unittest.TestCase):
         with self.assertRaises(IndexError):
             stats1[-1]
         with self.assertRaises(IndexError):
-            stats1[2]
+            stats1[1]
         with self.assertRaises(TypeError):
             stats1['asdf']
 
