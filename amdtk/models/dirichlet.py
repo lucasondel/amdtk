@@ -19,7 +19,7 @@ class DirichletStats(PriorStats):
     def __getitem__(self, key):
         if type(key) is not int:
             raise TypeError()
-        if key < 0 or key > 1:
+        if key < 0 or key > 0:
             raise IndexError
         return self.__stats
 
@@ -89,8 +89,8 @@ class Dirichlet(Model, Prior):
 
         Parameters
         ----------
-        q : :class:`NormalGamma`
-            NormalGamma density with which to compute the KL divergence.
+        q : :class:`Dirichlet`
+            Dirichlet density with which to compute the KL divergence.
         Returns
         -------
         KL : float
