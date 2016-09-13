@@ -38,6 +38,7 @@ if [ ! -e "$out_dir/.done" ]; then
     # Train the language model.
     amdtk_lm_create \
         --resample_hparams \
+        --niter=5 \
         "$lm_params" \
         "$vocab_file" \
         "$out_dir/labels/text" \
@@ -51,10 +52,11 @@ if [ ! -e "$out_dir/.done" ]; then
         "$out_dir/initial_model/model.bin" || exit 1
 
     # Retrain the model.
-    $PWD/utils/phone_loop_vb_iter.sh \
+    utils/phone_loop_vb_iter.sh \
         "$setup" \
         "$parallel_opts" \
         "$keys" \
+        "$bigram_ac_weight" \
         "$out_dir/initial_model" \
         "$out_dir/retrained_model" || exit 1
         
