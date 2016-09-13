@@ -16,7 +16,7 @@ class FakeModel(Model):
         super().__init__(params)
 
 
-class TestDiscreteLatentModel(unittest.TestCase):
+class TestNormalGamma(unittest.TestCase):
 
     def testInit(self):
         params = {
