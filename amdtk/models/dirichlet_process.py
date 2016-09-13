@@ -4,41 +4,36 @@
 import numpy as np
 from scipy.special import psi
 from .dirichlet import Dirichlet
+from .model import Model
+from .model import InvalidModelError
+from .model import InvalidModelParameterError
+from .model import MissingModelParameterError
+from .prior import Prior
+from .prior import PriorStats
 
 
-class DirichletProcessStats(object):
-    """Sufficient statistics for :class:`TruncatedDirichletProcess`.
+class DirichletProcessStats(PriorStats):
+    """Sufficient statistics for :class:`DirichletProcess`."""
 
-    Methods
-    -------
-    __getitem__(key)
-        Index operator.
-    __add__(stats)
-        Addition operator.
-    __iadd__(stats)
-        In-place addition operator.
+    def __init__(self, X, weights=None):
+        if weights is not None:
+            weighted_X = (X.T * weights).T
+        else:
+            weighted_X = X
 
-    """
-
-    def __init__(self, E_P_Z):
-        stats1 = E_P_Z.sum(axis=0)
+        stats1 = weighted_X.sum(axis=0)
         stats2 = np.zeros_like(stats1)
         for i in range(len(stats1)-1):
             stats2[i] += stats1[i+1:].sum()
+
         self.__stats = [stats1, stats2]
 
     def __getitem__(self, key):
         if type(key) is not int:
-            raise KeyError()
-        if key < 0 or key > 2:
+            raise TypeError()
+        if key < 0 or key > 1:
             raise IndexError()
         return self.__stats[key]
-
-    def __add__(self, other):
-        new_stats = DirichletProcessStats(len(self.__stats[0]))
-        new_stats += self
-        new_stats += other
-        return new_stats
 
     def __iadd__(self, other):
         self.__stats[0] += other.__stats[0]
@@ -46,8 +41,8 @@ class DirichletProcessStats(object):
         return self
 
 
-class TruncatedDirichletProcess(object):
-    """Truncated Dirichlet process.
+class DirichletProcess(Model, Prior):
+    """(Truncated) Dirichlet process.
 
     In this model, the maximum number of component is limited in order
     to apply variational bayesian inference.
@@ -61,71 +56,113 @@ class TruncatedDirichletProcess(object):
         First shape parameter of the Beta distribution for the
         stick-breaking construction of the DP.
 
-    Methods
-    -------
-    expLogPi()
-        Expected value of the log of the weights of the DP.
-    KL(pdf)
-        KL divergence between the current and the given densities.
-    newPosterior(stats)
-        Create a new posterior distribution.
-
     """
 
-    def __init__(self, g1, g2):
-        self.g1 = g1
-        self.g2 = g2
+    def __init__(self, params):
+        """Initialize a (truncated) Dirichlet process.
+
+        Attributes
+        ----------
+        params : dict
+            Dictionary containing:
+              * T: truncation parameter
+              * gamma: concentration parameter
+
+        """
+        super().__init__(params)
+        missing_param = None
+        try:
+            if self.T <= 0:
+                raise InvalidModelParameterError(self, 'T', self.T)
+            if self.gamma <= 0:
+                raise InvalidModelParameterError(self, 'gamma', self.gamma)
+        except KeyError as e:
+            missing_param = e.__str__()
+
+        if missing_param is not None:
+            raise MissingModelParameterError(self, missing_param)
+
+        self.g1 = np.ones(self.T)
+        self.g2 = np.zeros(self.T) + self.gamma
 
     @property
-    def truncation(self):
-        return len(self.g1)
+    def T(self):
+        return self.params['T']
 
-    def expLogPi(self):
-        """Expected value of the log of the weights of the DP.
+    @property
+    def gamma(self):
+        return self.params['gamma']
+
+    def expectedX(self):
+        """Expected value of the weights.
 
         Returns
         -------
-        E_log_pi : float
-            Log weights.
+        E_weights : numpy.ndarray
+            Expected value of weights.
+        """
+        return self.g1 / (self.g1 + self.g2)
+
+    def expectedLogX(self):
+        """Expected value of the logarithm of the weights.
+
+        Returns
+        -------
+        E_log weights : numpy.ndarray
+            Expected value of the log of the weights.
 
         """
-        n = self.g1.shape[0]
         v = psi(self.g1) - psi(self.g1+self.g2)
         nv = psi(self.g2) - psi(self.g1+self.g2)
-        for i in range(1, n):
+        for i in range(1, self.T):
             v[i] += nv[:i].sum()
         return v
 
-    def KL(self, pdf):
-        """KL divergence between the current and the given densities.
+    def KL(self, q):
+        """KL divergence between the current and the given density.
 
+        Parameters
+        ----------
+        q : :class:`DirichletProcess`
+            Dirichlet processwith which to compute the KL divergence.
         Returns
         -------
         KL : float
             KL divergence.
 
         """
+        if not isinstance(q, DirichletProcess):
+            raise InvalidModelError(q, self)
+
+        p = self
         KL = 0
-        for i in range(len(self.g1)):
-            a1 = np.array([self.g1[i], self.g2[i]])
-            a2 = np.array([pdf.g1[i], pdf.g2[i]])
-            KL += Dirichlet(a1).KL(Dirichlet(a2))
+        for i in range(p.T):
+            a1 = np.array([p.g1[i], p.g2[i]])
+            a2 = np.array([q.g1[i], q.g2[i]])
+            d1 = Dirichlet({'alphas': a1})
+            d2 = Dirichlet({'alphas': a2})
+            KL += d1.KL(d2)
         return KL
 
     def newPosterior(self, stats):
-        """Create a new posterior distribution.
-
-        Create a new posterior (a Dirichlet density) given the
-        parameters of the current model and the statistics provided.
+        """Create a new Dirichlet process giventhe parameters of the
+        current model and the statistics provided.
 
         Parameters
         ----------
-        stats : :class:MultivariateGaussianDiagCovStats
+        stats : :class:DirichletProcessStats
             Accumulated sufficient statistics for the update.
 
         Returns
         -------
-        post : :class:Dirichlet
-            New Dirichlet density.
+        post : :class:`DirichletProcess`
+            New Dirichlet process.
+
         """
-        return TruncatedDirichletProcess(self.g1+stats[0], self.g2+stats[1])
+        new_params = {
+            'T': self.T,
+            'gamma': self.gamma
+        }
+        dp = DirichletProcess(new_params)
+        dp.g1 = self.g1 + stats[0]
+        dp.g2 = self.g2 + stats[1]

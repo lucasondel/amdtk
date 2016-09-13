@@ -13,7 +13,7 @@ import copy
 import numpy as np
 from scipy.misc import logsumexp
 from ..models import DirichletProcessStats
-from ..models import TruncatedDirichletProcess
+from ..models import DirichletProcess
 from ..models import HmmGraph
 from ..models import MixtureStats
 from ..models import GaussianDiagCovStats
@@ -29,9 +29,9 @@ class BayesianInfinitePhoneLoop(object):
 
     Attributes
     ----------
-    prior : :class:`TruncatedDirichletProcess`
+    prior : :class:`DirichletProcess`
         Prior over the weights of each phone (i.e. unit) model.
-    posterior : :class:`TruncatedDirichletProcess`
+    posterior : :class:`DirichletProcess`
         Posterior over the weights of each phone (i.e. unit) model.
     dgraph : :class:`HmmGraph`
         HMM model corresponding to the phone loop model.
@@ -67,7 +67,7 @@ class BayesianInfinitePhoneLoop(object):
         """
         g1 = np.ones(truncation)
         g2 = np.zeros(truncation) + concentration
-        tdp = TruncatedDirichletProcess(g1, g2)
+        tdp = DirichletProcess(g1, g2)
 
         if silence_model is not None:
             nunits = truncation - 1
@@ -131,7 +131,7 @@ class BayesianInfinitePhoneLoop(object):
             Sequence of unit.
 
         """
-        self.dgraph = HmmGraph.linearSequence(seq, self.nstates, 
+        self.dgraph = HmmGraph.linearSequence(seq, self.nstates,
                                               share_name_units=[SILENCE_NAME])
         self.dgraph.setEmissions(self.name_model)
 

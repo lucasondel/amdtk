@@ -15,7 +15,7 @@ from .dirichlet import Dirichlet
 from .dirichlet import DirichletStats
 
 
-from .dirichlet_process import TruncatedDirichletProcess
+from .dirichlet_process import DirichletProcess
 from .dirichlet_process import DirichletProcessStats
 
 from .dirichlet import Dirichlet
