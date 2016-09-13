@@ -61,6 +61,7 @@ kappa=5
 a=3
 b=3
 model_type="ploop_${fea_type}_c${concentration}_T${truncation}_sil${sil_ngauss}_s${nstates}_g${ncomponents}_a${a}_b${b}"
+unigram_ac_weight=1.0
 
 ############################################################################
 # Language model training.                                                 #
