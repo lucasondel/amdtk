@@ -67,6 +67,7 @@ class NormalGamma(Model, Prior):
 
         """
         super().__init__(params)
+        missing_param = None
         try:
             # Empty statement just to make sure that the parameter was
             # specified in params.
@@ -79,7 +80,10 @@ class NormalGamma(Model, Prior):
             if (self.beta <= 0).any():
                 raise InvalidModelParameterError(self, 'beta', self.beta)
         except KeyError as e:
-            raise MissingModelParameterError(self, e.__str__())
+            missing_param = e.__str__()
+
+        if missing_param is not None:
+            raise MissingModelParameterError(self, missing_param)
 
     @property
     def mu(self):
@@ -161,7 +165,7 @@ class NormalGamma(Model, Prior):
 
         Parameters
         ----------
-        stats : :class:MultivariateGaussianDiagCovStats
+        stats : :class:NormalGammaStats
             Accumulated sufficient statistics for the update.
 
         Returns
