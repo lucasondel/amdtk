@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 
 from amdtk.models import DiscreteLatentModel
 from amdtk.models import DiscreteLatentModelEmptyListError
