@@ -1,7 +1,7 @@
 
+import unittest
 from amdtk.models import DiscreteLatentModel
 from amdtk.models import DiscreteLatentModelEmptyListError
-import unittest
 
 
 class FakeDiscreteLatentModel(DiscreteLatentModel):

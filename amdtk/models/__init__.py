@@ -1,5 +1,11 @@
 
 from .model import Model
+from .model import ModelError
+from .model import InvalidModelError
+from .model import InvalidModelParameterError
+from .model import MissingModelParameterError
+
+from .prior import Prior
 
 from .dirichlet_process import TruncatedDirichletProcess
 from .dirichlet_process import DirichletProcessStats
