@@ -3,6 +3,7 @@ import unittest
 import numpy as np
 from scipy.special import gammaln, psi
 from amdtk.models import NormalGamma
+from amdtk.models import NormalGammaStats
 from amdtk.models import Model
 from amdtk.models import InvalidModelError
 from amdtk.models import InvalidModelParameterError
@@ -14,6 +15,55 @@ class FakeModel(Model):
 
     def __init__(self, params):
         super().__init__(params)
+
+
+class TestNormalGammaStats(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.X = X = np.random.multivariate_normal([0, 0], [[1, 0], [0, 1]],
+                                                  size=1000)
+        cls.weights = .5 * np.ones(len(X))
+        cls.weighted_X = (cls.weights * cls.X.T).T
+
+    def testInit(self):
+        X = self.X
+        weights = self.weights
+        weighted_X = self.weighted_X
+
+        stats = NormalGammaStats(X, weights)
+
+        self.assertAlmostEqual(stats[0], weights.sum(), 'invalid stats')
+        self.assertTrue(np.isclose(stats[1], weighted_X.sum(axis=0)).all(),
+                        'invalid stats')
+        self.assertTrue(np.isclose(stats[2],
+                        (X * weighted_X).sum(axis=0)).all(),
+                        'invalid stats')
+
+    def testAccumulate(self):
+        X = self.X
+        weights = self.weights
+
+        stats1 = NormalGammaStats(X, weights)
+        stats2 = NormalGammaStats(X, weights)
+        stats2 += stats2
+
+        self.assertEqual(2 * stats1[0], stats2[0])
+        self.assertTrue(np.isclose(2 * stats1[1], stats2[1]).all())
+        self.assertTrue(np.isclose(2 * stats1[2], stats2[2]).all())
+
+    def testFailIndex(self):
+        X = self.X
+        weights = self.weights
+
+        stats1 = NormalGammaStats(X, weights)
+
+        with self.assertRaises(IndexError):
+            stats1[-1]
+        with self.assertRaises(IndexError):
+            stats1[3]
+        with self.assertRaises(TypeError):
+            stats1['asdf']
 
 
 class TestNormalGamma(unittest.TestCase):

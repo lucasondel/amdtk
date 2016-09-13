@@ -8,6 +8,32 @@ from .model import InvalidModelError
 from .model import InvalidModelParameterError
 from .model import MissingModelParameterError
 from .prior import Prior
+from .prior import PriorStats
+
+
+class NormalGammaStats(PriorStats):
+    """Sufficient statistics for the NormalGamma."""
+
+    def __init__(self, X, weights):
+        weighted_X = (weights*X.T).T
+        self.__stats = [
+            weights.sum(),
+            weighted_X.sum(axis=0),
+            (weighted_X*X).sum(axis=0)
+        ]
+
+    def __getitem__(self, key):
+        if type(key) is not int:
+            raise TypeError()
+        if key < 0 or key > 2:
+            raise IndexError()
+        return self.__stats[key]
+
+    def __iadd__(self, other):
+        self.__stats[0] += other.__stats[0]
+        self.__stats[1] += other.__stats[1]
+        self.__stats[2] += other.__stats[2]
+        return self
 
 
 class NormalGamma(Model, Prior):

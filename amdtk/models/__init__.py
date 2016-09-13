@@ -6,6 +6,10 @@ from .model import InvalidModelParameterError
 from .model import MissingModelParameterError
 
 from .prior import Prior
+from .prior import PriorStats
+
+from .normal_gamma import NormalGamma
+from .normal_gamma import NormalGammaStats
 
 from .dirichlet_process import TruncatedDirichletProcess
 from .dirichlet_process import DirichletProcessStats
@@ -21,7 +25,6 @@ from .mixture import BayesianMixture
 from .multivariate_gaussian import GaussianDiagCovStats
 from .multivariate_gaussian import BayesianGaussianDiagCov
 
-from .normal_gamma import NormalGamma
 
 from .hmm_graph import HmmGraph
 

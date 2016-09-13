@@ -5,13 +5,13 @@ from amdtk.models import Model
 
 
 class FakeModel(Model):
-    
+
     def __init__(self, params):
         super().__init__(params)
-        
+
 
 class TestModel(unittest.TestCase):
-    
+
     def testUuid(self):
         nobjs = 10000
         uuids = np.zeros(nobjs)
@@ -19,7 +19,6 @@ class TestModel(unittest.TestCase):
             uuids[i] = FakeModel({}).uuid
         self.assertEqual(len(uuids), len(np.unique(uuids)),
                          msg='some uuids are not unique')
-        
+
 if __name__ == '__main__':
     unittest.main()
-    
