@@ -5,6 +5,8 @@ from .dirichlet_process import DirichletProcessStats
 from .dirichlet import Dirichlet
 
 from .discrete_latent_model import DiscreteLatentModel
+from .discrete_latent_model import DiscreteLatentModelEmptyListError
+
 
 from .mixture import MixtureStats
 from .mixture import BayesianMixture

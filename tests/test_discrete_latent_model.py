@@ -1,16 +1,21 @@
 #!/usr/bin/env python
 
-import amdtk.models
+from amdtk.models import DiscreteLatentModel
+from amdtk.models import DiscreteLatentModelEmptyListError
 import unittest
 
 
-class FakeDiscreteLatentModel(amdtk.models.DiscreteLatentModel):
+class FakeDiscreteLatentModel(DiscreteLatentModel):
     
     def __init__(self, objs):
         super().__init__(objs)
         
 
 class TestDiscreteLatentModel(unittest.TestCase):
+    
+    def testEmptyList(self):
+        with self.assertRaises(DiscreteLatentModelEmptyListError):
+            FakeDiscreteLatentModel([])
     
     def testSizeLatentVariable(self):
         size = 1
