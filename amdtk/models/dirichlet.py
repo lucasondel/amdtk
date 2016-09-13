@@ -2,9 +2,33 @@
 """Dirichlet density."""
 
 from scipy.special import gammaln, psi
+from .model import Model
+from .model import InvalidModelError
+from .model import InvalidModelParameterError
+from .model import MissingModelParameterError
+from .prior import Prior
+from .prior import PriorStats
 
 
-class Dirichlet(object):
+class DirichletStats(PriorStats):
+    """Sufficient statistics for the NormalGamma."""
+
+    def __init__(self, X, weights):
+        self.__stats = (X.T * weights).sum(axis=1)
+
+    def __getitem__(self, key):
+        if type(key) is not int:
+            raise TypeError()
+        if key < 0 or key > 1:
+            raise IndexError
+        return self.__stats
+
+    def __iadd__(self, other):
+        self.__stats += other.__stats
+        return self
+
+
+class Dirichlet(Model, Prior):
     """Dirichlet density.
 
     Attributes
@@ -12,63 +36,96 @@ class Dirichlet(object):
     alphas : numpy.ndarray
         Parameters of the Dirichlet density.
 
-    Methods
-    -------
-    expLogPi()
-        Expected value of the logarithm of the weights.
-    KL(pdf)
-        KL divergence between the current and the given densities.
-    newPosterior(stats)
-        New posterior distribution.
-
     """
 
-    def __init__(self, alphas):
-        self.alphas = alphas
+    def __init__(self, params):
+        """Initialize a Dirichlet density.
 
-    def expLogPi(self):
+        Parameters
+        ----------
+        params : dict
+            Dictionary containing:
+              * alphas: parameters of the Dirichlet density
+
+        """
+        super().__init__(params)
+        missing_param = None
+        try:
+            if (self.alphas <= 0).any():
+                raise InvalidModelParameterError(self, 'alphas', self.alphas)
+        except KeyError as e:
+            missing_param = e.__str__()
+
+        if missing_param is not None:
+            raise MissingModelParameterError(self, missing_param)
+
+    @property
+    def alphas(self):
+        return self.params['alphas']
+
+    def expectedX(self):
+        """Expected value of the weights.
+
+        Returns
+        -------
+        E_weights : numpy.ndarray
+            Expected value of weights.
+        """
+        return self.alphas / self.alphas.sum()
+
+    def expectedLogX(self):
         """Expected value of the logarithm of the weights.
 
         Returns
         -------
-        E_log_pi : numpy.ndarray
-            Log weights.
+        E_log weights : numpy.ndarray
+            Expected value of the log of the weights.
 
         """
         return psi(self.alphas) - psi(self.alphas.sum())
 
-    def KL(self, pdf):
-        '''KL divergence between the current and the given densities.
+    def KL(self, q):
+        """KL divergence between the current and the given density.
 
+        Parameters
+        ----------
+        q : :class:`NormalGamma`
+            NormalGamma density with which to compute the KL divergence.
         Returns
         -------
         KL : float
             KL divergence.
 
-        '''
-        E_log_weights = self.expLogPi()
-        dirichlet_KL = gammaln(self.alphas.sum())
-        dirichlet_KL -= gammaln(pdf.alphas.sum())
-        dirichlet_KL -= gammaln(self.alphas).sum()
-        dirichlet_KL += gammaln(pdf.alphas).sum()
-        dirichlet_KL += (E_log_weights*(self.alphas - pdf.alphas)).sum()
-        return dirichlet_KL
+        """
+        if not isinstance(q, Dirichlet):
+            raise InvalidModelError(q, self)
+
+        p = self
+
+        E_log_weights = p.expectedLogX()
+        val = gammaln(p.alphas.sum())
+        val -= gammaln(q.alphas.sum())
+        val -= gammaln(p.alphas).sum()
+        val += gammaln(q.alphas).sum()
+        val += (E_log_weights * (p.alphas - q.alphas)).sum()
+        return val
 
     def newPosterior(self, stats):
-        """Create a new posterior distribution.
-
-        Create a new Dirichlet density given the parameters of the current
-        model and the statistics provided.
+        """Create a new Dirichlet density given the parameters of the
+        current model and the statistics provided.
 
         Parameters
         ----------
-        stats : :class:MultivariateGaussianDiagCovStats
+        stats : :class:DirichletStats
             Accumulated sufficient statistics for the update.
 
         Returns
         -------
-        post : :class:Dirichlet
+        post : :class:`Dirichlet`
             New Dirichlet density.
 
         """
-        return Dirichlet(self.alphas + stats[0])
+        new_params = {
+            'alphas': self.alphas + stats[0]
+        }
+        return Dirichlet(new_params)

@@ -36,7 +36,7 @@ class InvalidModelParameterError(ModelError):
         self.value = value
 
     def __str__(self):
-        return "invalid value: {0} for parameter {1} for {2}".format(
+        return "invalid value: {0} for parameter {1} of {2} model".format(
             self.value, self.name, self.obj)
 
 
@@ -49,7 +49,7 @@ class MissingModelParameterError(ModelError):
         self.name = name
 
     def __str__(self):
-        return "missing value for parameter {0} for {1}".format(
+        return "missing value for parameter {0} of {1} model".format(
             self.name, self.obj)
 
 
@@ -79,3 +79,6 @@ class Model(metaclass=abc.ABCMeta):
     def uuid(self):
         """Unique identifier of the model."""
         return self.__uuid
+
+    def __str__(self):
+        return self.__class__.__name__

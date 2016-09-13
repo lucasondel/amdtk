@@ -11,6 +11,10 @@ from .prior import PriorStats
 from .normal_gamma import NormalGamma
 from .normal_gamma import NormalGammaStats
 
+from .dirichlet import Dirichlet
+from .dirichlet import DirichletStats
+
+
 from .dirichlet_process import TruncatedDirichletProcess
 from .dirichlet_process import DirichletProcessStats
 
