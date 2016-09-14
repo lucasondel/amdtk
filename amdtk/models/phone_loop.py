@@ -16,7 +16,6 @@ from ..models import DirichletProcessStats
 from ..models import DirichletProcess
 from ..models import HmmGraph
 from ..models import MixtureStats
-from ..models import GaussianDiagCovStats
 
 # Watchout before changing this as we expect the silence name to be
 # lower (alphabetically speaking) than the unit prefix.

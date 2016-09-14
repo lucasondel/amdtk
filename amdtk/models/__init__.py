@@ -1,5 +1,6 @@
 
 from .model import Model
+from .model import VBModel
 from .model import ModelError
 from .model import InvalidModelError
 from .model import InvalidModelParameterError
@@ -26,9 +27,7 @@ from .discrete_latent_model import DiscreteLatentModelEmptyListError
 from .mixture import MixtureStats
 from .mixture import BayesianMixture
 
-from .multivariate_gaussian import GaussianDiagCovStats
 from .multivariate_gaussian import BayesianGaussianDiagCov
-
 
 from .hmm_graph import HmmGraph
 

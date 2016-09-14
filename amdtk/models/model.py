@@ -82,3 +82,65 @@ class Model(metaclass=abc.ABCMeta):
 
     def __str__(self):
         return self.__class__.__name__
+
+
+class VBModel(metaclass=abc.ABCMeta):
+    """Base class for all the models that can be trained with
+    Variational Bayes algorithm.
+
+    """
+
+    @abc.abstractproperty
+    def prior(self):
+        pass
+
+    @abc.abstractproperty
+    def posterior(self):
+        pass
+
+    @abc.abstractmethod
+    def expectedLogLikelihood(self, X):
+        """Expected value of the log-likelihood of X.
+
+        Parameters
+        ----------
+        X : numpy.ndarray
+            Data matrix of N frames with D dimensions.
+
+        Returns
+        -------
+        E_llh : numpy.ndarray
+            The expected value of the log-likelihood.
+
+        """
+        pass
+
+    @abc.abstractmethod
+    def KLPosteriorPrior(self):
+        """KL divergence between the posterior and the prior densities.
+
+        Returns
+        -------
+        KL : float
+            KL divergence.
+
+        """
+        return self.posterior.KL(self.prior)
+
+    @abc.abstractmethod
+    def updatePosterior(self, stats):
+        """Update the parameters of the posterior density given the
+        accumulated statistics.
+
+        Parameters
+        ----------
+        stats : obj
+            Accumulated sufficient statistics for the update.
+
+        Returns
+        -------
+        post : :class:`Prior`
+            New posterior density/distribution.
+
+        """
+        self.posterior = self.prior.newPosterior(stats)
