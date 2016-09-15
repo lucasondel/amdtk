@@ -31,8 +31,11 @@ class TestDirichletStats(unittest.TestCase):
         weights = self.weights
         weighted_X = self.weighted_X
 
-        stats = DirichletStats(X, weights)
+        stats1 = DirichletStats(X)
+        stats2 = DirichletStats(X, 1.0)
+        self.assertTrue(np.isclose(stats1[0], stats2[0]).all())
 
+        stats = DirichletStats(X, weights)
         self.assertTrue(isinstance(stats, PriorStats))
 
         self.assertTrue(np.isclose(stats[0], weighted_X.sum(axis=0)).all(),

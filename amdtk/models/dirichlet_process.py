@@ -16,10 +16,10 @@ class DirichletProcessStats(PriorStats):
     """Sufficient statistics for :class:`DirichletProcess`."""
 
     def __init__(self, X, weights=None):
-        if weights is not None:
-            weighted_X = (X.T * weights).T
-        else:
+        if weights is None:
             weighted_X = X
+        else:
+            weighted_X = (np.asarray(weights)*X.T).T
 
         stats1 = weighted_X.sum(axis=0)
         stats2 = np.zeros_like(stats1)

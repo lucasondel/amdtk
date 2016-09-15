@@ -33,11 +33,15 @@ class TestDirichletProcessStats(unittest.TestCase):
         weights = self.weights
         weighted_X = self.weighted_X
 
+        stats1 = DirichletProcessStats(X)
+        stats2 = DirichletProcessStats(X, 1.0)
+        self.assertTrue(np.isclose(stats1[0], stats2[0]).all())
+        self.assertTrue(np.isclose(stats1[1], stats2[1]).all())
+
         stats1 = weighted_X.sum(axis=0)
         stats2 = np.zeros_like(stats1)
         for i in range(len(stats1)-1):
             stats2[i] += stats1[i+1:].sum()
-
         stats = DirichletProcessStats(X, weights)
 
         self.assertTrue(isinstance(stats, PriorStats))

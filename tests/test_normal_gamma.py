@@ -32,8 +32,13 @@ class TestNormalGammaStats(unittest.TestCase):
         weights = self.weights
         weighted_X = self.weighted_X
 
-        stats = NormalGammaStats(X, weights)
+        stats1 = NormalGammaStats(X)
+        stats2 = NormalGammaStats(X, 1.0)
+        self.assertEqual(stats1[0], stats2[0])
+        self.assertTrue(np.isclose(stats1[1], stats2[1]).all())
+        self.assertTrue(np.isclose(stats1[2], stats2[2]).all())
 
+        stats = NormalGammaStats(X, weights)
         self.assertTrue(isinstance(stats, PriorStats))
 
         self.assertAlmostEqual(stats[0], weights.sum(), 'invalid stats')

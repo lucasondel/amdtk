@@ -8,7 +8,7 @@ class PriorStats(metaclass=abc.ABCMeta):
     """Abstract base class for the prior statistics."""
 
     @abc.abstractmethod
-    def __init__(self, X, weights):
+    def __init__(self, X, weights=None):
         pass
 
     @abc.abstractmethod

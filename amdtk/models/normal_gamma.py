@@ -14,10 +14,18 @@ from .prior import PriorStats
 class NormalGammaStats(PriorStats):
     """Sufficient statistics for the NormalGamma."""
 
-    def __init__(self, X, weights):
-        weighted_X = (weights*X.T).T
+    def __init__(self, X, weights=None):
+        if weights is None:
+            weighted_X = X
+            counts = X.shape[0]
+        else:
+            weighted_X = (np.asarray(weights)*X.T).T
+            if not isinstance(weights, np.ndarray):
+                counts = X.shape[0]
+            else:
+                counts = weights.sum()
         self.__stats = [
-            weights.sum(),
+            counts,
             weighted_X.sum(axis=0),
             (weighted_X*X).sum(axis=0)
         ]

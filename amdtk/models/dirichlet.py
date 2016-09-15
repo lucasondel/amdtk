@@ -1,6 +1,7 @@
 
 """Dirichlet density."""
 
+import numpy as np
 from scipy.special import gammaln, psi
 from .model import Model
 from .model import InvalidModelError
@@ -13,8 +14,12 @@ from .prior import PriorStats
 class DirichletStats(PriorStats):
     """Sufficient statistics for the NormalGamma."""
 
-    def __init__(self, X, weights):
-        self.__stats = (X.T * weights).sum(axis=1)
+    def __init__(self, X, weights=None):
+        if weights is None:
+            weighted_X = X
+        else:
+            weighted_X = (np.asarray(weights)*X.T).T
+        self.__stats = (weighted_X).sum(axis=0)
 
     def __getitem__(self, key):
         if type(key) is not int:
