@@ -25,8 +25,6 @@ class TestStandardVariationalBayes(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        #np.random.seed(12)
-
         X1 = np.random.multivariate_normal([-2, -2],
                                            [[1, 0], [0, 1]],
                                            size=1000)

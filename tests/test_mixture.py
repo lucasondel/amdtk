@@ -10,6 +10,7 @@ from amdtk.models import Dirichlet
 from amdtk.models import DirichletProcess
 from amdtk.models import InvalidModelParameterError
 from amdtk.models import MissingModelParameterError
+from amdtk.models import DiscreteLatentModelEmptyListError
 from amdtk.models import NormalGamma
 
 
@@ -123,6 +124,14 @@ class TestBayesianMixture(unittest.TestCase):
             'components': self.components
         }
         with self.assertRaises(InvalidModelParameterError):
+            BayesianMixture(params)
+
+        params = {
+            'prior': self.prior,
+            'posterior': self.posterior,
+            'components': []
+        }
+        with self.assertRaises(DiscreteLatentModelEmptyListError):
             BayesianMixture(params)
 
     def testExpLogLikelihood(self):

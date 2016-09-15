@@ -56,7 +56,7 @@ class MissingModelParameterError(ModelError):
 class DiscreteLatentModelEmptyListError(ModelError):
     """Raised when attempting to create a DiscreteLatentModel."""
 
-    def __init__(self, obj, message):
+    def __init__(self, obj):
         self.obj = obj
 
     def __str__(self):
