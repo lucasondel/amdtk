@@ -12,7 +12,9 @@ class DiscreteLatentModelEmptyListError(DiscreteLatentModelError):
 
     def __init__(self, obj, message):
         self.obj = obj
-        self.message = message
+
+    def __str__(self):
+        return "Creating a {0} model with not components.".format(self.obj)
 
 
 class DiscreteLatentModel(object):
@@ -22,14 +24,14 @@ class DiscreteLatentModel(object):
     ----------
     k : int
         Number of state for the hidden variable.
-    components : list like
+    components : list
         Model associated for each specific state of the hidden variable.
 
     """
 
     def __init__(self, components):
         if len(components) == 0:
-            raise DiscreteLatentModelEmptyListError(self, "empty list")
+            raise DiscreteLatentModelEmptyListError(self)
         self.components = components
 
     @property

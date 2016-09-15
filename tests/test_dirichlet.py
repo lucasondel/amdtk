@@ -17,6 +17,9 @@ class FakeModel(Model):
     def __init__(self, params):
         super().__init__(params)
 
+    def stats(stats, x, data, weights):
+        pass
+
 
 class TestDirichletStats(unittest.TestCase):
 

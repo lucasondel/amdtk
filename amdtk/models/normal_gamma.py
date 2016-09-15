@@ -109,6 +109,31 @@ class NormalGamma(Model, Prior):
     def beta(self):
         return self.params['beta']
 
+    def stats(self, stats, X, data, weights):
+        """Compute the sufficient statistics for the training..
+
+        Parameters
+        ----------
+        stats : dict
+            Dictionary where to store the stats for each model.
+        X : numpy.ndarray
+            Data on which to accumulate the stats.
+        data : dict
+            Ignored.
+        weights : numpy.ndarray
+            Weights to apply per frame.
+
+        Returns
+        -------
+        stats : dict
+            Dictionary containing the mapping model_id -> stats.
+
+        """
+        try:
+            stats[self.uuid] += NormalGammaStats(X, weights)
+        except KeyError:
+            stats[self.uuid] = NormalGammaStats(X, weights)
+
     def expectedX(self):
         """Expected value of the mean and precision.
 

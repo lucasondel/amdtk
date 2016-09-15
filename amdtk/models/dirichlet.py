@@ -68,6 +68,27 @@ class Dirichlet(Model, Prior):
     def alphas(self):
         return self.params['alphas']
 
+    def stats(self, stats, X, data, weights):
+        """Compute the sufficient statistics for the training..
+
+        Parameters
+        ----------
+        stats : dict
+            Dictionary where to store the stats for each model.
+        X : numpy.ndarray
+           Ignored.
+        data : dict
+            Data specific to each sub-model with to use to accumulate
+            the stats.
+        weights : numpy.ndarray
+            Weights to apply when building the stats.
+
+        """
+        try:
+            stats[self.uuid] += DirichletStats(data, weights)
+        except KeyError:
+            stats[self.uuid] = DirichletStats(data, weights)
+
     def expectedX(self):
         """Expected value of the weights.
 

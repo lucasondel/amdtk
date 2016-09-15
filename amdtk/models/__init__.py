@@ -1,10 +1,12 @@
 
 from .model import Model
 from .model import VBModel
+from .model import DiscreteLatentModel
 from .model import ModelError
 from .model import InvalidModelError
 from .model import InvalidModelParameterError
 from .model import MissingModelParameterError
+from .model import DiscreteLatentModelEmptyListError
 
 from .prior import Prior
 from .prior import PriorStats
@@ -15,16 +17,11 @@ from .normal_gamma import NormalGammaStats
 from .dirichlet import Dirichlet
 from .dirichlet import DirichletStats
 
-
 from .dirichlet_process import DirichletProcess
 from .dirichlet_process import DirichletProcessStats
 
 from .dirichlet import Dirichlet
 
-from .discrete_latent_model import DiscreteLatentModel
-from .discrete_latent_model import DiscreteLatentModelEmptyListError
-
-from .mixture import MixtureStats
 from .mixture import BayesianMixture
 
 from .multivariate_gaussian import BayesianGaussianDiagCov

@@ -1,4 +1,7 @@
 
+from .algorithms import VariationalBayes
+from .algorithms import StandardVariationalBayes
+
 from .core import readHtk
 from .core import writeHtk
 from .core import readHtkLabels

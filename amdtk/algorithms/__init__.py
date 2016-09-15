@@ -1,0 +1,3 @@
+
+from .variational_bayes import VariationalBayes
+from .variational_bayes import StandardVariationalBayes

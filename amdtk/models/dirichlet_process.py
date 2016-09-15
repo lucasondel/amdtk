@@ -93,6 +93,27 @@ class DirichletProcess(Model, Prior):
     def gamma(self):
         return self.params['gamma']
 
+    def stats(self, stats, X, data, weights):
+        """Compute the sufficient statistics for the training..
+
+        Parameters
+        ----------
+        stats : dict
+            Dictionary where to store the stats for each model.
+        X : numpy.ndarray
+            Ignored.
+        data : dict
+            Data specific to each sub-model with to use to accumulate
+            the stats.
+        weights : numpy.ndarray
+            Weights to apply when building the stats.
+
+        """
+        try:
+            stats[self.uuid] += DirichletProcessStats(data, weights)
+        except KeyError:
+            stats[self.uuid] = DirichletProcessStats(data, weights)
+
     def expectedX(self):
         """Expected value of the weights.
 
@@ -166,3 +187,4 @@ class DirichletProcess(Model, Prior):
         dp = DirichletProcess(new_params)
         dp.g1 = self.g1 + stats[0]
         dp.g2 = self.g2 + stats[1]
+        return dp

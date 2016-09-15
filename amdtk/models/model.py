@@ -90,6 +90,25 @@ class Model(metaclass=abc.ABCMeta):
         """Unique identifier of the model."""
         return self.__uuid
 
+    @abc.abstractmethod
+    def stats(self, stats, X, data, weights):
+        """Compute the sufficient statistics for the training..
+
+        Parameters
+        ----------
+        stats : dict
+            Dictionary where to store the stats for each model.
+        X : numpy.ndarray
+            Data on which to accumulate the stats.
+        data : dict
+            Data specific to each sub-model with to use to accumulate
+            the stats.
+        weights : numpy.ndarray
+            Weights to apply when building the stats.
+
+        """
+        pass
+
     def __str__(self):
         return self.__class__.__name__
 

@@ -14,6 +14,9 @@ class FakeModel(Model):
     def __init__(self, params):
         super().__init__(params)
 
+    def stats(stats, x, data, weights):
+        pass
+
 
 class TestBayesianGaussianDiagCov(unittest.TestCase):
 
@@ -25,7 +28,7 @@ class TestBayesianGaussianDiagCov(unittest.TestCase):
             'alpha': 1,
             'beta': np.array([1, 1])
         }
-        cls. prior = NormalGamma(params)
+        cls.prior = NormalGamma(params)
 
         params = {
             'mu': np.array([0, 0]),
@@ -53,7 +56,7 @@ class TestBayesianGaussianDiagCov(unittest.TestCase):
             'prior': self.prior
         }
         with self.assertRaises(MissingModelParameterError):
-             BayesianGaussianDiagCov(params)
+            BayesianGaussianDiagCov(params)
 
         params = {
             'posterior': self.posterior
@@ -84,7 +87,7 @@ class TestBayesianGaussianDiagCov(unittest.TestCase):
         model = BayesianGaussianDiagCov(params)
 
         X = self.X
-        llh = model.expectedLogLikelihood(X)
+        llh, data = model.expectedLogLikelihood(X, weight=1.0)
         _, log_prec = model.posterior.expectedLogX()
         m, prec = model.posterior.expectedX()
         norm = 0

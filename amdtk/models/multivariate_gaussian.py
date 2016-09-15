@@ -98,6 +98,28 @@ class BayesianGaussianDiagCov(Model, VBModel):
         """
         return super().KLPosteriorPrior()
 
+    def stats(self, stats, X, data, weights):
+        """Compute the sufficient statistics for the training..
+
+        Parameters
+        ----------
+        stats : dict
+            Dictionary where to store the stats for each model.
+        X : numpy.ndarray
+            Data on which to accumulate the stats.
+        data : dict
+            Ignored.
+        weights : numpy.ndarray
+            Weights to apply per frame.
+
+        Returns
+        -------
+        stats : dict
+            Dictionary containing the mapping model_id -> stats.
+
+        """
+        self.posterior.stats(stats, X, data, weights)
+
     def updatePosterior(self, stats):
         """Update the parameters of the posterior density given the
         accumulated statistics.
@@ -113,4 +135,6 @@ class BayesianGaussianDiagCov(Model, VBModel):
             New posterior density/distribution.
 
         """
-        super().KLPosteriorPrior()
+        if self.posterior.uuid in stats:
+            self.posterior = self.prior.newPosterior(
+                stats[self.posterior.uuid])
