@@ -25,6 +25,16 @@ class BayesianGaussianDiagCov(Model, VBModel):
     """
 
     def __init__(self, params):
+        """Initialize a NormalGamma Prior.
+
+        Parameters
+        ----------
+        params : dict
+            Dictionary containing:
+              * prior: :class:`NormalGamma`
+              * posterior: :class:`NormalGamma`
+
+        """
         super().__init__(params)
         missing_param = None
         try:
@@ -51,25 +61,31 @@ class BayesianGaussianDiagCov(Model, VBModel):
     def posterior(self, new_posterior):
         self.params['posterior'] = new_posterior
 
-    def expectedLogLikelihood(self, X):
+    def expectedLogLikelihood(self, X, weight=1.0):
         """Expected value of the log-likelihood of X.
 
         Parameters
         ----------
         X : numpy.ndarray
             Data matrix of N frames with D dimensions.
+        weight : float
+            Weight to apply to the expected log-likelihood.
 
         Returns
         -------
         E_llh : numpy.ndarray
             The expected value of the log-likelihood for each frame.
+        data : object
+            Data needed by the model to evaluate the statistics for the
+            VB update.
 
         """
         _, log_precision = self.posterior.expectedLogX()
         m, precision = self.posterior.expectedX()
         log_norm = (log_precision - 1 / self.posterior.kappa).sum()
         log_norm -= np.log(2 * np.pi)
-        return .5*(log_norm - (precision * (X - m)**2).sum(axis=1))
+        E_llh = .5 * (log_norm - (precision * (X - m)**2).sum(axis=1))
+        return weight * E_llh, X
 
     def KLPosteriorPrior(self):
         """KL divergence between the posterior and the prior densities.

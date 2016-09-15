@@ -53,6 +53,16 @@ class MissingModelParameterError(ModelError):
             self.name, self.obj)
 
 
+class DiscreteLatentModelEmptyListError(ModelError):
+    """Raised when attempting to create a DiscreteLatentModel."""
+
+    def __init__(self, obj, message):
+        self.obj = obj
+
+    def __str__(self):
+        return "Creating a {0} model with not components.".format(self.obj)
+
+
 class Model(metaclass=abc.ABCMeta):
     """Base class for all the models.
 
@@ -99,18 +109,23 @@ class VBModel(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def expectedLogLikelihood(self, X):
+    def expectedLogLikelihood(self, X, weight=1.0):
         """Expected value of the log-likelihood of X.
 
         Parameters
         ----------
         X : numpy.ndarray
             Data matrix of N frames with D dimensions.
+        weight : float
+            Weight to apply to the expected log-likelihood.
 
         Returns
         -------
         E_llh : numpy.ndarray
             The expected value of the log-likelihood.
+        data : object
+            Data needed by the model to evaluate the statistics for the
+            VB update.
 
         """
         pass
@@ -144,3 +159,25 @@ class VBModel(metaclass=abc.ABCMeta):
 
         """
         self.posterior = self.prior.newPosterior(stats)
+
+
+class DiscreteLatentModel(metaclass=abc.ABCMeta):
+    """Base class for model having discrete latent variable.
+
+    Attributes
+    ----------
+    k : int
+        Number of state for the hidden variable.
+    components : list like
+        Model associated for each specific state of the hidden variable.
+
+    """
+
+    @abc.abstractproperty
+    def components(self):
+        pass
+
+    @property
+    def k(self):
+        """Number of state for the hidden variable."""
+        return len(self.components)
