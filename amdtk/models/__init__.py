@@ -26,7 +26,8 @@ from .mixture import BayesianMixture
 
 from .multivariate_gaussian import BayesianGaussianDiagCov
 
-from .hmm_graph import HmmGraph
+from .graph import State
+from .graph import Graph
 
 from .phone_loop import BayesianInfinitePhoneLoop
 

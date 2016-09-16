@@ -14,7 +14,7 @@ import numpy as np
 from scipy.misc import logsumexp
 from ..models import DirichletProcessStats
 from ..models import DirichletProcess
-from ..models import HmmGraph
+#from ..models import HmmGraph
 
 # Watchout before changing this as we expect the silence name to be
 # lower (alphabetically speaking) than the unit prefix.
