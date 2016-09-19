@@ -24,20 +24,21 @@ class State(object):
 
     """
 
-    def __init__(self, name):
+    def __init__(self, name, emission):
         """Hmm state object.
 
         Parameters
         ----------
         name : str
             String identifier of the state.
+        emission : :class:`Model`
 
         """
         self.__uuid = uuid.uuid4().int >> 64
         self.name = name
         self.next_states = {}
         self.previous_states = {}
-        self.model_id = None
+        self.emission = emission
 
     @property
     def uuid(self):
@@ -100,20 +101,22 @@ class Graph(object):
     def states_names(self):
         return [state.names for state in self.sorted_states]
 
-    def addState(self, name):
+    def addState(self, name, emission):
         """Add a state to the HMM graph.
 
         Parameters
         ----------
         name : str
             Name of the state.
+        emission : :class:`Model`
 
         Returns
         -------
         state : :class:`State`
             The state created.
+
         """
-        state = State(name)
+        state = State(name, emission)
         self.states[state.uuid] = state
         self.sorted_states = \
             sorted([state for _, state in self.states.items()],
@@ -191,16 +194,3 @@ class Graph(object):
                 if next_state.uuid in state.next_states:
                     retval[i, j] = state.next_states[next_state.uuid]
         return retval
-
-    def setEmissions(self, name_model):
-        """Associate an emission probability model for each state of the
-        HMM.
-
-        Parameters
-        ----------
-        name_model : dict
-            Mapping "state_name" -> model object.
-
-        """
-        for state in self.states:
-            state.model = name_model[state.name]

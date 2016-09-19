@@ -58,6 +58,29 @@ class DirichletProcess(Model, Prior):
 
     """
 
+    @classmethod
+    def loadParams(cls, config, data):
+        """Load the parameters of the model.
+
+        Parameters
+        ----------
+        config : dict like
+            Dictionary like object containing specific values of the
+            model.
+        data : dict
+            Extra data that may be used for initializing the model.
+
+        Returns
+        -------
+        params : dict
+            Dictioanry of the model's parameters.
+
+        """
+        params = {}
+        params['T'] = config.getint('truncation')
+        params['gamma'] = config.getfloat('concentration')
+        return params
+
     def __init__(self, params):
         """Initialize a (truncated) Dirichlet process.
 

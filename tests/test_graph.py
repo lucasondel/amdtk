@@ -12,13 +12,13 @@ class TestState(unittest.TestCase):
         nobjs = 10000
         uuids = np.zeros(nobjs)
         for i in range(nobjs):
-            uuids[i] = State('state' + str(i)).uuid
+            uuids[i] = State('state' + str(i), None).uuid
         self.assertEqual(len(uuids), len(np.unique(uuids)),
                          msg='some uuids are not unique')
 
     def testAddLink(self):
-        s1 = State('state1')
-        s2 = State('state2')
+        s1 = State('state1', None)
+        s2 = State('state2', None)
 
         s1.addLink(s2, -5)
         self.assertTrue(s2.uuid in s1.next_states)
@@ -27,9 +27,9 @@ class TestState(unittest.TestCase):
         self.assertTrue(s2.previous_states[s1.uuid] == -5)
 
     def testNormalize(self):
-        s1 = State('state1')
-        s2 = State('state2')
-        s3 = State('state3')
+        s1 = State('state1', None)
+        s2 = State('state2', None)
+        s3 = State('state3', None)
         states = {s1.uuid: s1, s2.uuid: s2, s3.uuid: s3}
 
         s1.addLink(s2, -5)
@@ -53,8 +53,8 @@ class TestGraph(unittest.TestCase):
 
     def testAddState(self):
         graph = Graph('hmm')
-        state1 = graph.addState('hmm_state1')
-        state2 = graph.addState('hmm_state2')
+        state1 = graph.addState('hmm_state1', None)
+        state2 = graph.addState('hmm_state2', None)
         self.assertTrue(state1.uuid in graph.states)
         self.assertTrue(state2.uuid in graph.states)
 
@@ -68,8 +68,8 @@ class TestGraph(unittest.TestCase):
 
     def testSetUniformPobInit(self):
         graph = Graph('hmm')
-        state1 = graph.addState('hmm_state')
-        state2 = graph.addState('hmm_state')
+        state1 = graph.addState('hmm_state', None)
+        state2 = graph.addState('hmm_state', None)
         graph.setInitState(state1)
         graph.setInitState(state2)
         graph.setUniformProbInitStates()
@@ -80,9 +80,9 @@ class TestGraph(unittest.TestCase):
 
     def testNormalizet(self):
         graph = Graph('hmm')
-        state1 = graph.addState('state1')
-        state2 = graph.addState('state2')
-        state3 = graph.addState('state3')
+        state1 = graph.addState('state1', None)
+        state2 = graph.addState('state2', None)
+        state3 = graph.addState('state3', None)
         graph.addLink(state1, state1, -5)
         graph.addLink(state1, state2, -5)
         graph.addLink(state2, state2, -5)

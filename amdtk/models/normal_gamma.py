@@ -60,6 +60,31 @@ class NormalGamma(Model, Prior):
 
     """
 
+    @classmethod
+    def loadParams(cls, config, data):
+        """Load the parameters of the model.
+
+        Parameters
+        ----------
+        config : dict like
+            Dictionary like object containing specific values of the
+            model.
+        data : dict
+            Extra data that may be used for initializing the model.
+
+        Returns
+        -------
+        params : dict
+            Dictioanry of the model's parameters.
+
+        """
+        params = {}
+        params['mu'] = data['mean']
+        params['kappa'] = config.getfloat('kappa')
+        params['alpha'] = config.getfloat('alpha')
+        params['beta'] = config.getfloat('beta') * data['var']
+        return params
+
     def __init__(self, params):
         """Initialize a NormalGamma Prior.
 

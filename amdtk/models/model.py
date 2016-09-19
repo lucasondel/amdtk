@@ -3,6 +3,8 @@
 
 import uuid
 import abc
+import configparser
+import os
 
 
 class ModelError(Exception):
@@ -63,6 +65,31 @@ class DiscreteLatentModelEmptyListError(ModelError):
         return "Creating a {0} model with not components.".format(self.obj)
 
 
+class MultipleModelDefinitionsError(ModelError):
+    """Raised when a configuration file has multiple model definition."""
+
+    def __init__(self, filename):
+        self.filename
+
+    def __str__(self):
+        return "Several model definitions were found in {0}.".format(
+            self.filename)
+
+
+class UnknownModelError(ModelError):
+    """Raised when the model name in a configuration does not match
+    any known model.
+
+    """
+
+    def __init__(self, model_name):
+        self.model_name = model_name
+
+    def __str__(self):
+        return "Unknown model: {0}.".format(
+            self.model_name)
+
+
 class Model(metaclass=abc.ABCMeta):
     """Base class for all the models.
 
@@ -71,6 +98,65 @@ class Model(metaclass=abc.ABCMeta):
     uuid
 
     """
+
+    @abc.abstractclassmethod
+    def loadParams(cls, config, data):
+        """Load the parameters of the model.
+
+        Parameters
+        ----------
+        config : dict like
+            Dictionary like object containing specific values of the
+            model.
+        data : dict
+            Extra data that may be used for initializing the model.
+
+        Returns
+        -------
+        params : dict
+            Dictioanry of the model's parameters.
+        """
+        pass
+
+    @classmethod
+    def create(cls, config_file, data):
+        """Create a model from a configuration file.
+
+        Parameters
+        ----------
+        config_file : str
+            Path to the configuration file of the object.
+        data : dict
+            Extra data that may be used for initializing the model.
+
+        Returns
+        -------
+        model : :class:`Model`
+            Created model.
+
+        """
+        if not os.path.exists(config_file):
+            print(os.getcwd())
+            raise FileNotFoundError(config_file)
+
+        config = configparser.ConfigParser()
+        config.read(config_file)
+        if len(config.sections()) > 1:
+            raise MultipleModelDefinitionsError(config_file)
+        model_name = config.sections()[0]
+        amdtk_module = __import__('amdtk')
+        models = getattr(amdtk_module, 'models')
+        try:
+            model_class = getattr(models, model_name)
+            failed = False
+        except AttributeError:
+            failed = True
+
+        if failed:
+            raise UnknownModelError(model_name)
+
+        params = model_class.loadParams(config[model_name], data)
+        return model_class(params)
 
     @abc.abstractmethod
     def __init__(self, params):

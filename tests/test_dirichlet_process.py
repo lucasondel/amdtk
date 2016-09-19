@@ -15,6 +15,10 @@ from amdtk.models import PriorStats
 
 class FakeModel(Model):
 
+    @classmethod
+    def loadParams(cls, config, data):
+        pass
+
     def __init__(self, params):
         super().__init__(params)
 
@@ -78,6 +82,13 @@ class TestDirichletProcessStats(unittest.TestCase):
 
 
 class TestDirichletProcess(unittest.TestCase):
+
+    def testCreateFromConfigFile(self):
+        config_file = 'tests/data/dirichlet_process.cfg'
+        model = Model.create(config_file, {})
+        self.assertTrue(isinstance(model, DirichletProcess))
+        self.assertEqual(model.T, 10)
+        self.assertAlmostEqual(model.gamma, 2)
 
     def testInit(self):
         params = {

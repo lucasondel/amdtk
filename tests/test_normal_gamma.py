@@ -14,11 +14,16 @@ from amdtk.models import PriorStats
 
 class FakeModel(Model):
 
+    @classmethod
+    def loadParams(cls, config, data):
+        pass
+
     def __init__(self, params):
         super().__init__(params)
 
     def stats(stats, x, data, weights):
         pass
+
 
 class TestNormalGammaStats(unittest.TestCase):
 
@@ -77,6 +82,19 @@ class TestNormalGammaStats(unittest.TestCase):
 
 
 class TestNormalGamma(unittest.TestCase):
+
+    def testCreateFromConfigFile(self):
+        data = {
+            'mean': np.array([0., 0.]),
+            'var': np.array([1., 1.])
+        }
+        config_file = 'tests/data/normal_gamma.cfg'
+        model = Model.create(config_file, data)
+        self.assertTrue(isinstance(model, NormalGamma))
+        self.assertTrue(np.isclose(model.mu, data['mean']).all())
+        self.assertAlmostEqual(model.kappa, 5.)
+        self.assertAlmostEqual(model.alpha, 3.)
+        self.assertTrue(np.isclose(model.beta, data['var']*3).all())
 
     def testInit(self):
         params = {

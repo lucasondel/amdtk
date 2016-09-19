@@ -16,6 +16,10 @@ from amdtk.models import NormalGamma
 
 class FakeModel(Model):
 
+    @classmethod
+    def loadParams(cls, config, data):
+        pass
+
     def __init__(self, params):
         super().__init__(params)
 
@@ -67,6 +71,16 @@ class TestBayesianMixture(unittest.TestCase):
         cls.X = np.random.multivariate_normal([0, 0],
                                               [[1, 0], [0, 1]],
                                               size=1000)
+
+    def testCreateFromConfigFile(self):
+        data = {
+            'mean': np.array([0., 0.]),
+            'var': np.array([1., 1.])
+        }
+        config_file = 'tests/data/gmm.cfg'
+        model = Model.create(config_file, data)
+        self.assertTrue(isinstance(model.prior, Dirichlet))
+        self.assertTrue(isinstance(model.prior, Dirichlet))
 
     def testInit(self):
         params = {

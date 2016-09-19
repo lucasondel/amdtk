@@ -14,6 +14,10 @@ from amdtk.models import InvalidModelError
 
 class FakeModel(Model):
 
+    @classmethod
+    def loadParams(cls, config, data):
+        pass
+
     def __init__(self, params):
         super().__init__(params)
 
