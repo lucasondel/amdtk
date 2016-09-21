@@ -30,6 +30,7 @@ from .graph import State
 from .graph import Graph
 
 from .hmm import LeftToRightHMM
+from .hmm import BayesianPhoneLoop
 
 from .phone_loop import BayesianInfinitePhoneLoop
 

@@ -1,6 +1,7 @@
 
 """HMM implementation."""
 
+import abc
 import numpy as np
 from scipy.misc import logsumexp
 from .model import Model
@@ -11,101 +12,22 @@ from .model import InvalidModelError
 from .model import InvalidModelParameterError
 from .model import DiscreteLatentModelEmptyListError
 from .graph import Graph
+from .dirichlet import Dirichlet
+from .dirichlet_process import DirichletProcess
 
 
-class LeftToRightHMM(Model, VBModel, DiscreteLatentModel):
-    """Implementation of a left-to-right HMM.
+class HMM(Model, VBModel, DiscreteLatentModel):
+    """Base class for HMM models.
 
     """
-    hmm_count = 0
-
-    @classmethod
-    def loadParams(cls, config, data):
-        """Load the parameters of the model.
-
-        Parameters
-        ----------
-        config : dict like
-            Dictionary like object containing specific values of the
-            model.
-        data : dict
-            Extra data that may be used for initializing the model.
-
-        Returns
-        -------
-        params : dict
-            Dictioanry of the model's parameters.
-
-        """
-        params = {}
-        cls.hmm_count += 1
-        params['name'] = config['prefix_name'] + str(cls.hmm_count)
-        nstates = config.getint('nstates')
-        comps = [Model.create(config['emission'], data) for i in
-                 range(nstates)]
-        params['nstates'] = nstates
-        params['emissions'] = comps
-        return params
 
     def __init__(self, params):
-        """Initialize the model.
-
-        Parameters
-        ----------
-        params : dict
-            Dictionary containing:
-              * name: str
-              * nstates: int
-              * emissions: List of Model objects for each state
-
-        """
         super().__init__(params)
-        missing_param = None
-        try:
-            # Empty statement to make sure the components are defined.
-            self.components
 
-            if not isinstance(params['name'], str):
-                raise InvalidModelParameterError(self, 'name', self.name)
-            if not isinstance(self.nstates, int):
-                raise InvalidModelParameterError(self, 'nstates',
-                                                 self.posterior)
-        except KeyError as e:
-            missing_param = e.__str__()
-
-        if missing_param is not None:
-            raise MissingModelParameterError(self, missing_param)
-
-        if self.k == 0:
-            raise DiscreteLatentModelEmptyListError(self)
-
-        for component in self.components:
-            if not isinstance(component, VBModel):
-                raise InvalidModelError(component, VBModel)
-
-        self._build(params['name'])
-
-    def _build(self, name):
-        self.graph = Graph(name)
-        previous_state = None
-        for i in range(self.nstates):
-            state_name = name + '_' + str(i+1)
-            state = self.graph.addState(state_name, self.components[i])
-            self.graph.addLink(state, state, 0.)
-            if i == 0:
-                self.graph.setInitState(state)
-            if i == self.nstates - 1:
-                self.graph.setFinalState(state, 0.)
-            if previous_state is not None:
-                self.graph.addLink(previous_state, state, 0.)
-            previous_state = state
-
-        self.graph.setUniformProbInitStates()
-        self.graph.normalize()
-
-    @property
-    def nstates(self):
-        return self.params['nstates']
+    @abc.abstractmethod
+    def build(self):
+        """Build the specific structure of the HMM."""
+        pass
 
     @property
     def components(self):
@@ -138,8 +60,7 @@ class LeftToRightHMM(Model, VBModel, DiscreteLatentModel):
         resps, states_data = data
         for i, state in enumerate(self.graph.sorted_states):
             model = self.components[i]
-            model.stats(stats, X, states_data[model.uuid], resps[:, i],
-                        self.uuid)
+            model.stats(stats, X, states_data[model.uuid], resps[:, i])
 
     def expectedLogLikelihood(self, X, weight=1.0):
         """Expected value of the log-likelihood of X.
@@ -206,3 +127,223 @@ class LeftToRightHMM(Model, VBModel, DiscreteLatentModel):
         """
         for model in self.components:
             model.updatePosterior(stats)
+
+
+class LeftToRightHMM(HMM):
+    """Implementation of a left-to-right HMM.
+
+    """
+    hmm_count = 0
+
+    @classmethod
+    def loadParams(cls, config, data):
+        """Load the parameters of the model.
+
+        Parameters
+        ----------
+        config : dict like
+            Dictionary like object containing specific values of the
+            model.
+        data : dict
+            Extra data that may be used for initializing the model.
+
+        Returns
+        -------
+        params : dict
+            Dictioanry of the model's parameters.
+
+        """
+        params = {}
+        cls.hmm_count += 1
+        params['name'] = config['prefix_name'] + str(cls.hmm_count)
+        nstates = config.getint('nstates')
+        comps = [Model.create(config['emission'], data) for i in
+                 range(nstates)]
+        params['nstates'] = nstates
+        params['emissions'] = comps
+        return params
+
+    def __init__(self, params):
+        """Initialize the model.
+
+        Parameters
+        ----------
+        params : dict
+            Dictionary containing:
+              * name: str
+              * nstates: int
+              * emissions: List of Model objects for each state
+
+        """
+        super().__init__(params)
+        missing_param = None
+        try:
+            # Empty statement to make sure the components are defined.
+            self.components
+
+            if not isinstance(params['name'], str):
+                raise InvalidModelParameterError(self, 'name', self.name)
+            if not isinstance(self.nstates, int):
+                raise InvalidModelParameterError(self, 'nstates',
+                                                 self.nstates)
+        except KeyError as e:
+            missing_param = e.__str__()
+
+        if missing_param is not None:
+            raise MissingModelParameterError(self, missing_param)
+
+        if self.k == 0:
+            raise DiscreteLatentModelEmptyListError(self)
+
+        for component in self.components:
+            if not isinstance(component, VBModel):
+                raise InvalidModelError(component, VBModel)
+
+        self.build()
+
+    @property
+    def name(self):
+        return self.params['name']
+
+    @property
+    def nstates(self):
+        return self.params['nstates']
+
+    def build(self):
+        self.graph = Graph(self.name)
+        previous_state = None
+        for i in range(self.nstates):
+            state_name = self.name + '_' + str(i+1)
+            state = self.graph.addState(state_name, self.components[i])
+            self.graph.addLink(state, state, 0.)
+            if i == 0:
+                self.graph.setInitState(state)
+            if i == self.nstates - 1:
+                self.graph.setFinalState(state, 0.)
+            if previous_state is not None:
+                self.graph.addLink(previous_state, state, 0.)
+            previous_state = state
+
+        self.graph.setUniformProbInitStates()
+        self.graph.normalize()
+
+
+accepted_priors = [Dirichlet, DirichletProcess]
+
+
+class BayesianPhoneLoop(HMM):
+    """Implementation of a left-to-right HMM.
+
+    """
+
+    @classmethod
+    def loadParams(cls, config, data):
+        """Load the parameters of the model.
+
+        Parameters
+        ----------
+        config : dict like
+            Dictionary like object containing specific values of the
+            model.
+        data : dict
+            Extra data that may be used for initializing the model.
+
+        Returns
+        -------
+        params : dict
+            Dictioanry of the model's parameters.
+
+        """
+        params = {}
+        params['prior'] = Model.create(config['prior'], data)
+        params['posterior'] = Model.create(config['prior'], data)
+        nunits = config.getint('nunits', 100)
+        subhmms = [Model.create(config['subhmms'], data) for i in
+                   range(nunits)]
+        params['nunits'] = nunits
+        params['subhmms'] = subhmms
+        components = []
+        for hmm in subhmms:
+            for component in hmm.components:
+                components.append(component)
+        params['emissions'] = components
+        return params
+
+    def __init__(self, params):
+        """Initialize the model.
+
+        Parameters
+        ----------
+        params : dict
+            Dictionary containing:
+              * nunits: int
+              * prior : :class:`Prior`
+              * posterior : :class:`Prior`
+              * subhmms: List of Model objects for each state
+
+        """
+        super().__init__(params)
+        missing_param = None
+        try:
+            # Empty statement to make sure the components are defined.
+            self.subhmms
+            self.components
+
+            if not isinstance(self.nunits, int):
+                raise InvalidModelParameterError(self, 'nunits',
+                                                 self.nunits)
+            if self.prior.__class__ not in accepted_priors:
+                raise InvalidModelParameterError(self, 'prior', self.prior)
+            if self.posterior.__class__ not in accepted_priors:
+                raise InvalidModelParameterError(self, 'posterior',
+                                                 self.posterior)
+        except KeyError as e:
+            missing_param = e.__str__()
+
+        if missing_param is not None:
+            raise MissingModelParameterError(self, missing_param)
+
+        if self.k == 0:
+            raise DiscreteLatentModelEmptyListError(self)
+
+        for component in self.components:
+            if not isinstance(component, VBModel):
+                raise InvalidModelError(component, VBModel)
+
+        self.build()
+
+    @property
+    def prior(self):
+        return self.params['prior']
+
+    @property
+    def posterior(self):
+        return self.params['posterior']
+
+    @property
+    def subhmms(self):
+        return self.params['subhmms']
+
+    @property
+    def nunits(self):
+        return self.params['nunits']
+
+    def build(self):
+        self.graph = Graph('phone_loop')
+        for hmm in self.subhmms:
+            self.graph.addGraph(hmm.graph, 0.)
+
+        self.graph.setUniformProbInitStates()
+        self.setUnitTransitions()
+        self.graph.normalize()
+
+    def setUnitTransitions(self):
+        log_pi = self.posterior.expectedLogX()
+        sorted_names = [hmm.name for hmm in self.subhmms]
+        for src_uuid in self.graph.final_states:
+            for i, dest_uuid in enumerate(self.graph.init_states):
+                src = self.graph.states[src_uuid]
+                dest = self.graph.states[dest_uuid]
+                unit_name = src.name[:len(sorted_names[i])]
+                idx = sorted_names.index(unit_name)
+                self.graph.addLink(src, dest, log_pi[idx])

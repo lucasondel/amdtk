@@ -67,6 +67,40 @@ class TestGraph(unittest.TestCase):
         graph.setFinalState(state2)
         self.assertTrue(state2.uuid in graph.final_states)
 
+    def testAddGraph(self):
+        graph1 = Graph('hmm')
+        state1 = graph1.addState('hmm1_state1', None)
+        state2 = graph1.addState('hmm1_state2', None)
+        graph1.setInitState(state1)
+        graph1.setFinalState(state2)
+        graph1.addLink(state1, state2)
+        graph2 = Graph('hmm')
+        state3 = graph2.addState('hmm2_state1', None)
+        state4 = graph2.addState('hmm2_state2', None)
+        graph2.setInitState(state3)
+        graph2.setFinalState(state4)
+        graph2.addLink(state3, state4)
+        graph1.addGraph(graph2)
+
+        self.assertTrue(state1.uuid in graph1.states)
+        self.assertTrue(state2.uuid in graph1.states)
+        self.assertTrue(state3.uuid in graph1.states)
+        self.assertTrue(state4.uuid in graph1.states)
+
+        self.assertEqual(graph1.sorted_states,
+                         [state1, state2, state3, state4])
+
+        self.assertTrue(state1.uuid in graph1.init_states)
+        self.assertTrue(state3.uuid in graph1.init_states)
+
+        self.assertTrue(state2.uuid in graph1.final_states)
+        self.assertTrue(state4.uuid in graph1.final_states)
+
+        self.assertTrue(state1.uuid in state2.next_states)
+        self.assertTrue(state1.uuid in state4.next_states)
+        self.assertTrue(state3.uuid in state2.next_states)
+        self.assertTrue(state3.uuid in state4.next_states)
+
     def testSetUniformPobInit(self):
         graph = Graph('hmm')
         state1 = graph.addState('hmm_state', None)

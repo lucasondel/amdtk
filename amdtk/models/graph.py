@@ -112,6 +112,31 @@ class Graph(object):
             ms.add(state.model)
         return ms
 
+    def addGraph(self, graph, weight=0.):
+        """Merge the given graph into the current graph.
+
+        Parameters
+        ----------
+        graph : :class:`Graph`
+            Graph object to merge.
+        weight : float
+            Log probability of going from one graph to the other. Previous
+            weights will be erased.
+
+        """
+        self.states = {**self.states, **graph.states}
+        self.sorted_states = \
+            sorted([state for _, state in self.states.items()],
+                   key=lambda state: state.name)
+        self.init_states = set.union(self.init_states, graph.init_states)
+        self.final_states = set.union(self.final_states, graph.final_states)
+
+        for src_uuid in self.final_states:
+            for dest_uuid in self.init_states:
+                src = self.states[src_uuid]
+                dest = self.states[dest_uuid]
+                self.addLink(src, dest, weight)
+
     def addState(self, name, emission):
         """Add a state to the HMM graph.
 

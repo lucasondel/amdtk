@@ -6,6 +6,7 @@ from amdtk import VariationalBayes
 from amdtk import StandardVariationalBayes
 from amdtk.models import BayesianMixture
 from amdtk.models import LeftToRightHMM
+from amdtk.models import BayesianPhoneLoop
 from amdtk.models import BayesianGaussianDiagCov
 from amdtk.models import Dirichlet
 from amdtk.models import DirichletProcess
@@ -239,13 +240,6 @@ class TestStandardVariationalBayes(unittest.TestCase):
             'posterior': g_posterior2
         })
 
-        prior = Dirichlet({
-            'alphas': np.array([1, 1]),
-        })
-        posterior = Dirichlet({
-            'alphas': np.array([1, 1]),
-        })
-
         model = LeftToRightHMM({
             'name': 'test',
             'nstates': 2,
@@ -282,6 +276,96 @@ class TestStandardVariationalBayes(unittest.TestCase):
         self.assertLess(norm, 0.2)
 
         self.assertGreater(niter, 2, 'VB algorithm has converged to quickly. '
+                                     'This is suspicious.')
+
+    def testVBPhoneLoop(self):
+        g_prior = NormalGamma({
+            'mu': np.array([0, 0]),
+            'kappa': 1,
+            'alpha': 1,
+            'beta': np.array([1, 1])
+        })
+
+        g_posterior1 = NormalGamma({
+            'mu': np.array([-5, -5]),
+            'kappa': 1,
+            'alpha': 1,
+            'beta': np.array([1, 1])
+        })
+
+        g_posterior2 = NormalGamma({
+            'mu': np.array([5, 5]),
+            'kappa': 1,
+            'alpha': 1,
+            'beta': np.array([1, 1])
+        })
+
+        g1 = BayesianGaussianDiagCov({
+            'prior': g_prior,
+            'posterior': g_posterior1
+        })
+
+        g2 = BayesianGaussianDiagCov({
+            'prior': g_prior,
+            'posterior': g_posterior2
+        })
+
+        prior = Dirichlet({
+            'alphas': np.array([1, 1]),
+        })
+        posterior = Dirichlet({
+            'alphas': np.array([1, 1]),
+        })
+
+        hmm1 = LeftToRightHMM({
+            'name': 'test',
+            'nstates': 1,
+            'emissions': [g1]
+        })
+        hmm2 = LeftToRightHMM({
+            'name': 'test',
+            'nstates': 1,
+            'emissions': [g2]
+        })
+        model = BayesianPhoneLoop({
+            'nunits': 2,
+            'emissions': hmm1.components + hmm2.components,
+            'subhmms': [hmm1, hmm2],
+            'prior': prior,
+            'posterior': posterior
+        })
+
+        alg = StandardVariationalBayes()
+
+        X = self.X
+        previous_E_llh = float('-inf')
+        stop = False
+        max_iter = 100
+        niter = 0
+        threshold = 1e-6
+        while not stop and niter < max_iter:
+            niter += 1
+            F, stats = alg.expectation(model, X, 1.0)
+            current_E_llh = (F.sum() - model.KLPosteriorPrior())
+            diff = current_E_llh - previous_E_llh
+            if abs(diff) < threshold:
+                stop = True
+            else:
+                self.assertGreaterEqual(diff, 0, 'VB algorithm failed to '
+                                        'improve the lower-bound')
+
+            previous_E_llh = current_E_llh
+            alg.maximization(model, stats)
+
+        m = model.components[0].posterior.mu
+        norm = np.linalg.norm(m - np.array([-2, -2]))
+        self.assertLess(norm, 0.2)
+
+        m = model.components[1].posterior.mu
+        norm = np.linalg.norm(m - np.array([2, 2]))
+        self.assertLess(norm, 0.2)
+
+        self.assertGreater(niter, 2, 'VB algorithm has converged too quickly. '
                                      'This is suspicious.')
 
 
