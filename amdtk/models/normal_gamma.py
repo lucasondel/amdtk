@@ -134,7 +134,7 @@ class NormalGamma(Model, Prior):
     def beta(self):
         return self.params['beta']
 
-    def stats(self, stats, X, data, weights):
+    def stats(self, stats, X, data, weights, model_id=None):
         """Compute the sufficient statistics for the training..
 
         Parameters
@@ -154,10 +154,12 @@ class NormalGamma(Model, Prior):
             Dictionary containing the mapping model_id -> stats.
 
         """
+        if model_id is None:
+            model_id = self.uuid
         try:
-            stats[self.uuid] += NormalGammaStats(X, weights)
+            stats[model_id] += NormalGammaStats(X, weights)
         except KeyError:
-            stats[self.uuid] = NormalGammaStats(X, weights)
+            stats[model_id] = NormalGammaStats(X, weights)
 
     def expectedX(self):
         """Expected value of the mean and precision.

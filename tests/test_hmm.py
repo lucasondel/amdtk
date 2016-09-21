@@ -3,6 +3,7 @@ import unittest
 import numpy as np
 from scipy.misc import logsumexp
 from amdtk.models import Model
+from amdtk.models import VBModel
 from amdtk.models import DiscreteLatentModel
 from amdtk.models import LeftToRightHMM
 from amdtk import StandardVariationalBayes
@@ -60,6 +61,8 @@ class TestLefToRightHMM(unittest.TestCase):
         }
         config_file = 'tests/data/hmm.cfg'
         model = Model.create(config_file, data)
+        self.assertTrue(isinstance(model, LeftToRightHMM))
+        self.assertTrue(np.isclose(model.nstates, 3))
 
     def testInit(self):
         model = LeftToRightHMM({
@@ -69,7 +72,9 @@ class TestLefToRightHMM(unittest.TestCase):
         })
 
         self.assertTrue(isinstance(model, Model))
+        self.assertTrue(isinstance(model, VBModel))
         self.assertTrue(isinstance(model, DiscreteLatentModel))
+
 
 if __name__ == '__main__':
     unittest.main()

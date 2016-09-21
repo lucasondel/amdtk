@@ -2,6 +2,7 @@
 import unittest
 import numpy as np
 from scipy.misc import logsumexp
+from amdtk.models import Model
 from amdtk.models import State
 from amdtk.models import Graph
 
@@ -78,7 +79,7 @@ class TestGraph(unittest.TestCase):
             test_val = np.logaddexp(graph.logProbInit[state_uuid], test_val)
         self.assertAlmostEqual(np.exp(test_val), 1.0)
 
-    def testNormalizet(self):
+    def testNormalize(self):
         graph = Graph('hmm')
         state1 = graph.addState('state1', None)
         state2 = graph.addState('state2', None)
@@ -93,6 +94,41 @@ class TestGraph(unittest.TestCase):
         for i in range(log_A.shape[0]):
             self.assertAlmostEqual(logsumexp(log_A[i]), 0, msg='HMM is not '
                                    'properly normalized')
+
+    def testForwardBackward(self):
+        data = {
+            'mean': np.array([0., 0.]),
+            'var': np.array([1., 1.])
+        }
+        config_file = 'tests/data/multivariate_gaussian.cfg'
+        emission = Model.create(config_file, data)
+        graph = Graph('hmm')
+        state1 = graph.addState('state1', emission)
+        state2 = graph.addState('state2', emission)
+        state3 = graph.addState('state3', emission)
+        graph.addLink(state1, state1, -5)
+        graph.addLink(state1, state2, -5)
+        graph.addLink(state2, state2, -5)
+        graph.addLink(state2, state3, -5)
+        graph.addLink(state3, state3, -5)
+        graph.setInitState(state1)
+        graph.setFinalState(state3, -5)
+        graph.setUniformProbInitStates()
+        graph.normalize()
+
+        llhs = np.zeros((4, 3))
+        log_alphas = graph.forward(llhs)
+        log_betas = graph.backward(llhs)
+        log_P_Z = log_alphas + log_betas
+        log_P_Z = (log_P_Z.T - logsumexp(log_P_Z, axis=1)).T
+        expected_result = np.array([
+            [  1,   0,   0],
+            [1/3, 2/3,   0],
+            [  0, 2/3, 1/3],
+            [  0,   0,   1]
+        ], dtype=float)
+
+        self.assertTrue(np.isclose(np.exp(log_P_Z), expected_result).all())
 
 
 if __name__ == '__main__':

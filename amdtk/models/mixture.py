@@ -108,6 +108,33 @@ class BayesianMixture(Model, VBModel, DiscreteLatentModel):
     def components(self):
         return self.params['components']
 
+    def stats(self, stats, X, data, weights, model_id=None):
+        """Compute the sufficient statistics for the training..
+
+        Parameters
+        ----------
+        stats : dict
+            Dictionary where to store the stats for each model.
+        X : numpy.ndarray
+            Data on which to accumulate the stats.
+        data : dict
+            Data specific to each sub-model with to use to accumulate
+            the stats.
+        weights : numpy.ndarray
+            Weights to apply per frame.
+
+        Returns
+        -------
+        stats : dict
+            Dictionary containing the mapping model_id -> stats.
+
+        """
+        E_P_Z, g_data = data
+        self.posterior.stats(stats, X, E_P_Z, weights, self.uuid)
+        for i, component in enumerate(self.components):
+            comp_weights = weights * E_P_Z[:, i]
+            component.stats(stats, X, g_data[component.uuid], comp_weights)
+
     def expectedLogLikelihood(self, X, weight=1.0):
         """Expected value of the log-likelihood of the data given the
         model.
@@ -154,33 +181,6 @@ class BayesianMixture(Model, VBModel, DiscreteLatentModel):
             KL += component.KLPosteriorPrior()
         return KL + self.posterior.KL(self.prior)
 
-    def stats(self, stats, X, data, weights):
-        """Compute the sufficient statistics for the training..
-
-        Parameters
-        ----------
-        stats : dict
-            Dictionary where to store the stats for each model.
-        X : numpy.ndarray
-            Data on which to accumulate the stats.
-        data : dict
-            Data specific to each sub-model with to use to accumulate
-            the stats.
-        weights : numpy.ndarray
-            Weights to apply per frame.
-
-        Returns
-        -------
-        stats : dict
-            Dictionary containing the mapping model_id -> stats.
-
-        """
-        E_P_Z, g_data = data
-        self.posterior.stats(stats, X, E_P_Z, weights)
-        for i, component in enumerate(self.components):
-            comp_weights = weights * E_P_Z[:, i]
-            component.stats(stats, X, g_data[component.uuid], comp_weights)
-
     def updatePosterior(self, stats):
         """Update the parameters of the posterior distribution.
 
@@ -190,8 +190,8 @@ class BayesianMixture(Model, VBModel, DiscreteLatentModel):
             Dictionary of stats.
 
         """
-        if self.posterior.uuid in stats:
+        if self.uuid in stats:
             self.posterior = self.prior.newPosterior(
-                stats[self.posterior.uuid])
+                stats[self.uuid])
         for component in self.components:
             component.updatePosterior(stats)

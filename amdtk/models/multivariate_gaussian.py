@@ -121,7 +121,7 @@ class BayesianGaussianDiagCov(Model, VBModel):
         """
         return super().KLPosteriorPrior()
 
-    def stats(self, stats, X, data, weights):
+    def stats(self, stats, X, data, weights, model_id=None):
         """Compute the sufficient statistics for the training..
 
         Parameters
@@ -134,6 +134,8 @@ class BayesianGaussianDiagCov(Model, VBModel):
             Ignored.
         weights : numpy.ndarray
             Weights to apply per frame.
+        model_id : int
+            Use the specified model_id to store the statistics.
 
         Returns
         -------
@@ -141,7 +143,7 @@ class BayesianGaussianDiagCov(Model, VBModel):
             Dictionary containing the mapping model_id -> stats.
 
         """
-        self.posterior.stats(stats, X, data, weights)
+        self.posterior.stats(stats, X, data, weights, self.uuid)
 
     def updatePosterior(self, stats):
         """Update the parameters of the posterior density given the
@@ -158,6 +160,14 @@ class BayesianGaussianDiagCov(Model, VBModel):
             New posterior density/distribution.
 
         """
-        if self.posterior.uuid in stats:
-            self.posterior = self.prior.newPosterior(
-                stats[self.posterior.uuid])
+        try:
+            if self.uuid in stats:
+                self.posterior = self.prior.newPosterior(
+                    stats[self.uuid])
+            failed = False
+        except ValueError:
+            failed = True
+
+        if failed:
+            import pdb
+            pdb.set_trace()

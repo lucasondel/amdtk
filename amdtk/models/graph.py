@@ -39,6 +39,7 @@ class State(object):
         self.next_states = {}
         self.previous_states = {}
         self.emission = emission
+        self.final_weight = float('-inf')
 
     @property
     def uuid(self):
@@ -66,7 +67,9 @@ class State(object):
 
     def normalize(self, states):
         """Normalize the weights of the outgoing links so that they sum
-        up to one (when exponentiated).
+        up to one (when exponentiated). If the state is a final state
+        then we normalize assuming an implicit extra arc going to an
+        abstract final state.
 
         Parameters
         ----------
@@ -80,6 +83,7 @@ class State(object):
         for i, uuid in enumerate(self.next_states):
             log_weights[i] = self.next_states[uuid]
         log_norm = logsumexp(log_weights)
+        log_norm = np.logaddexp(log_norm, self.final_weight)
         for i, uuid in enumerate(self.next_states):
             state = states[uuid]
             self.next_states[uuid] -= log_norm
@@ -100,6 +104,13 @@ class Graph(object):
     @property
     def states_names(self):
         return [state.names for state in self.sorted_states]
+
+    @property
+    def models(self):
+        ms = set()
+        for state in self.sorted_states:
+            ms.add(state.model)
+        return ms
 
     def addState(self, name, emission):
         """Add a state to the HMM graph.
@@ -134,15 +145,18 @@ class Graph(object):
         """
         self.init_states.add(state.uuid)
 
-    def setFinalState(self, state):
+    def setFinalState(self, state, final_weight=-0.6931471805599453):
         """Mark the state as a possible final state.
 
         Parameters
         ----------
         state : :class:`State`
             New final state.
+        final_weight : float
+            Probability to finish (default: log(0.5))
 
         """
+        state.final_weight = final_weight
         self.final_states.add(state.uuid)
 
     def addLink(self, state, next_state, weight=0.):
@@ -167,8 +181,8 @@ class Graph(object):
         """
         state_log_pi = np.log(1 / len(self.init_states))
         self.logProbInit = {}
-        for state in self.init_states:
-            self.logProbInit[state] = state_log_pi
+        for state_uuid in self.init_states:
+            self.logProbInit[state_uuid] = state_log_pi
 
     def normalize(self):
         """Normalize the transitions probabilities.
@@ -194,3 +208,96 @@ class Graph(object):
                 if next_state.uuid in state.next_states:
                     retval[i, j] = state.next_states[next_state.uuid]
         return retval
+
+    def evaluateEmissions(self, X, ac_weight=1.0):
+        """Evalue the (expected value) of the log-likelihood of each
+        emission probability model.
+
+        Parameters
+        ----------
+        X : numpy.ndarray
+            Data matrix of N frames with D dimensions.
+        ac_weight : float
+            Scaling of the acoustic scores.
+
+        Returns
+        -------
+        E_llh : numpy.ndarray
+            The expected value of the log-likelihood for each frame.
+        log_p_Z ; numpy.ndarray
+            Log probability of the discrete latent variables for each
+            model.
+
+        """
+        E_log_p_X_given_Z = np.zeros((X.shape[0], len(self.states)))
+        data = []
+        for i, state in enumerate(self.sorted_states):
+            llh, state_data = state.model.expLogLikelihood(X, ac_weight)
+            E_log_p_X_given_Z[:, i] = llh
+            data.append(state_data)
+
+        return E_log_p_X_given_Z, data
+
+    def forward(self, llhs):
+        """Forward recursion given the log emission probabilities and
+        the HMM.
+
+        Parameters
+        ----------
+        llhs : numpy.ndarray
+            Log of the emission probabilites with shape (N x K) where N
+            is the number of frame in the sequence and K is the number
+            of state in the HMM.
+
+        Returns
+        -------
+        log_alphas : numpy.ndarray
+            The log alphas values of the recursions.
+
+        """
+        # Initial probabilities
+        log_pi = np.zeros(len(self.sorted_states)) + float('-inf')
+        for i, state in enumerate(self.sorted_states):
+            try:
+                log_pi[i] = self.logProbInit[state.uuid]
+            except KeyError:
+                pass
+
+        log_alphas = llhs.copy()
+        log_alphas[0] += log_pi
+        log_A = self.getLogProbTrans()
+        for t in range(1, len(llhs)):
+            log_alphas[t] += logsumexp(log_A.T + log_alphas[t - 1], axis=1)
+
+        return log_alphas
+
+    def backward(self, llhs):
+        """Backward recursion given the log emission probabilities and
+        the HMM.
+
+        Parameters
+        ----------
+        llhs : numpy.ndarray
+            Log of the emission probabilites with shape (N x K) where N
+            is the number of frame in the sequence and K is the number
+            of state in the HMM.
+
+        Returns
+        -------
+        log_betas : numpy.ndarray
+            The log alphas values of the recursions.
+
+        """
+        # Index of the final states.
+        final_indices = []
+        for state_uuid in self.final_states:
+            final_indices.append(self.sorted_states.index(
+                self.states[state_uuid]))
+
+        log_betas = np.zeros_like(llhs) + float('-inf')
+        log_betas[-1, final_indices] = 0.
+        log_A = self.getLogProbTrans()
+        for t in reversed(range(llhs.shape[0]-1)):
+            log_betas[t] = logsumexp(log_A + llhs[t + 1] +
+                                     log_betas[t + 1], axis=1)
+        return log_betas
