@@ -277,7 +277,7 @@ class BayesianPhoneLoop(HMM):
         params = {}
         params['prior'] = Model.create(config['prior'], data)
         params['posterior'] = Model.create(config['prior'], data)
-        nunits = config.getint('nunits', 100)
+        nunits = len(params['prior'].expectedLogX())
         subhmms = [Model.create(config['subhmms'], data) for i in
                    range(nunits)]
         params['nunits'] = nunits

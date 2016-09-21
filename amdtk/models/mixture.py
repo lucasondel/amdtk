@@ -50,7 +50,7 @@ class BayesianMixture(Model, VBModel, DiscreteLatentModel):
         params = {}
         params['prior'] = Model.create(config['prior'], data)
         params['posterior'] = Model.create(config['prior'], data)
-        ncomponents = config.getint('ncomponents')
+        ncomponents = len(params['prior'].expectedLogX())
         comps = [Model.create(config['component'], data) for i in
                  range(ncomponents)]
         params['components'] = comps
