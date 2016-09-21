@@ -134,7 +134,7 @@ class NormalGamma(Model, Prior):
     def beta(self):
         return self.params['beta']
 
-    def stats(self, stats, X, data, weights, model_id=None):
+    def stats(self, stats, X, data, weights):
         """Compute the sufficient statistics for the training..
 
         Parameters
@@ -154,12 +154,10 @@ class NormalGamma(Model, Prior):
             Dictionary containing the mapping model_id -> stats.
 
         """
-        if model_id is None:
-            model_id = self.uuid
         try:
-            stats[model_id] += NormalGammaStats(X, weights)
+            stats[self.uuid] += NormalGammaStats(X, weights)
         except KeyError:
-            stats[model_id] = NormalGammaStats(X, weights)
+            stats[self.uuid] = NormalGammaStats(X, weights)
 
     def expectedX(self):
         """Expected value of the mean and precision.
@@ -234,12 +232,15 @@ class NormalGamma(Model, Prior):
             New NormalGamma density.
 
         """
-        v = (self.kappa * self.mu + stats[1])**2
-        v /= (self.kappa + stats[0])
+        s0 = stats[0]
+        s1 = stats[1]
+        s2 = stats[2]
+        v = (self.kappa * self.mu + s1)**2
+        v /= (self.kappa + s0)
         new_params = {
-            'mu': (self.kappa * self.mu + stats[1]) / (self.kappa + stats[0]),
-            'kappa': self.kappa + stats[0],
-            'alpha': self.alpha + .5 * stats[0],
-            'beta': self.beta + 0.5*(-v + stats[2] + self.kappa * self.mu**2)
+            'mu': (self.kappa * self.mu + s1) / (self.kappa + s0),
+            'kappa': self.kappa + s0,
+            'alpha': self.alpha + .5 * s0,
+            'beta': self.beta + 0.5*(-v + s2 + self.kappa * self.mu**2)
         }
         return NormalGamma(new_params)

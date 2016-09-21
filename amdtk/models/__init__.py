@@ -9,6 +9,7 @@ from .model import MissingModelParameterError
 from .model import DiscreteLatentModelEmptyListError
 
 from .prior import Prior
+from .prior import EmptyPrior
 from .prior import PriorStats
 
 from .normal_gamma import NormalGamma

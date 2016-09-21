@@ -91,7 +91,7 @@ class Dirichlet(Model, Prior):
     def alphas(self):
         return self.params['alphas']
 
-    def stats(self, stats, X, data, weights, model_id=None):
+    def stats(self, stats, X, data, weights):
         """Compute the sufficient statistics for the training..
 
         Parameters
@@ -105,16 +105,12 @@ class Dirichlet(Model, Prior):
             the stats.
         weights : numpy.ndarray
             Weights to apply when building the stats.
-        model_id : int
-            Use the specified model_id to store the statistics.
 
         """
-        if model_id is None:
-            model_id = self.uuid
         try:
-            stats[model_id] += DirichletStats(data, weights)
+            stats[self.uuid] += DirichletStats(data, weights)
         except KeyError:
-            stats[model_id] = DirichletStats(data, weights)
+            stats[self.uuid] = DirichletStats(data, weights)
 
     def expectedX(self):
         """Expected value of the weights.

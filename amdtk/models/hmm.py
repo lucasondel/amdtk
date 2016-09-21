@@ -4,6 +4,7 @@
 import abc
 import numpy as np
 from scipy.misc import logsumexp
+from .prior import EmptyPrior
 from .model import Model
 from .model import VBModel
 from .model import DiscreteLatentModel
@@ -33,13 +34,15 @@ class HMM(Model, VBModel, DiscreteLatentModel):
     def components(self):
         return self.params['emissions']
 
+    @abc.abstractproperty
     def prior(self):
         return None
 
+    @abc.abstractproperty
     def posterior(self):
         return None
 
-    def stats(self, stats, X, data, weights, model_id=None):
+    def stats(self, stats, X, data, weights):
         """Compute the sufficient statistics for the training..
 
         Parameters
@@ -58,6 +61,7 @@ class HMM(Model, VBModel, DiscreteLatentModel):
 
         """
         resps, states_data = data
+        self.posterior.stats(stats, X, resps, weights)
         for i, state in enumerate(self.graph.sorted_states):
             model = self.components[i]
             model.stats(stats, X, states_data[model.uuid], resps[:, i])
@@ -105,7 +109,7 @@ class HMM(Model, VBModel, DiscreteLatentModel):
             KL divergence.
 
         """
-        KL = 0
+        KL = self.posterior.KL(self.prior)
         for model in self.components:
             KL += model.posterior.KL(model.prior)
         return KL
@@ -125,6 +129,9 @@ class HMM(Model, VBModel, DiscreteLatentModel):
             New posterior density/distribution.
 
         """
+        if self.posterior.uuid in stats:
+            self.posterior = self.prior.newPosterior(
+                stats[self.posterior.uuid])
         for model in self.components:
             model.updatePosterior(stats)
 
@@ -199,7 +206,20 @@ class LeftToRightHMM(HMM):
             if not isinstance(component, VBModel):
                 raise InvalidModelError(component, VBModel)
 
+        self._prior = EmptyPrior({})
         self.build()
+
+    @property
+    def prior(self):
+        return self._prior
+
+    @property
+    def posterior(self):
+        return self._prior
+
+    @posterior.setter
+    def posterior(self, new_posterior):
+        self._prior = new_posterior
 
     @property
     def name(self):
@@ -320,6 +340,10 @@ class BayesianPhoneLoop(HMM):
     def posterior(self):
         return self.params['posterior']
 
+    @posterior.setter
+    def posterior(self, new_posterior):
+        self.params['posterior'] = new_posterior
+
     @property
     def subhmms(self):
         return self.params['subhmms']
@@ -334,16 +358,22 @@ class BayesianPhoneLoop(HMM):
             self.graph.addGraph(hmm.graph, 0.)
 
         self.graph.setUniformProbInitStates()
-        self.setUnitTransitions()
         self.graph.normalize()
+        self.setUnitTransitions()
 
     def setUnitTransitions(self):
         log_pi = self.posterior.expectedLogX()
+        log_pi -= logsumexp(log_pi)
         sorted_names = [hmm.name for hmm in self.subhmms]
         for src_uuid in self.graph.final_states:
             for i, dest_uuid in enumerate(self.graph.init_states):
                 src = self.graph.states[src_uuid]
                 dest = self.graph.states[dest_uuid]
-                unit_name = src.name[:len(sorted_names[i])]
+                unit_name = src.name.split('_')[0]
                 idx = sorted_names.index(unit_name)
                 self.graph.addLink(src, dest, log_pi[idx])
+
+    def updatePosterior(self, stats):
+        super().updatePosterior(stats)
+        self.setUnitTransitions()
+        self.graph.normalize()

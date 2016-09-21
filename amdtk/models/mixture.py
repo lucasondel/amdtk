@@ -130,7 +130,7 @@ class BayesianMixture(Model, VBModel, DiscreteLatentModel):
 
         """
         E_P_Z, g_data = data
-        self.posterior.stats(stats, X, E_P_Z, weights, self.uuid)
+        self.posterior.stats(stats, X, E_P_Z, weights)
         for i, component in enumerate(self.components):
             comp_weights = weights * E_P_Z[:, i]
             component.stats(stats, X, g_data[component.uuid], comp_weights)
@@ -190,8 +190,8 @@ class BayesianMixture(Model, VBModel, DiscreteLatentModel):
             Dictionary of stats.
 
         """
-        if self.uuid in stats:
+        if self.posterior.uuid in stats:
             self.posterior = self.prior.newPosterior(
-                stats[self.uuid])
+                stats[self.posterior.uuid])
         for component in self.components:
             component.updatePosterior(stats)

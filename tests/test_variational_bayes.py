@@ -318,12 +318,12 @@ class TestStandardVariationalBayes(unittest.TestCase):
         })
 
         hmm1 = LeftToRightHMM({
-            'name': 'test',
+            'name': 'a1',
             'nstates': 1,
             'emissions': [g1]
         })
         hmm2 = LeftToRightHMM({
-            'name': 'test',
+            'name': 'a2',
             'nstates': 1,
             'emissions': [g2]
         })
@@ -340,9 +340,9 @@ class TestStandardVariationalBayes(unittest.TestCase):
         X = self.X
         previous_E_llh = float('-inf')
         stop = False
-        max_iter = 100
+        max_iter = 20
         niter = 0
-        threshold = 1e-6
+        threshold = 1e-4
         while not stop and niter < max_iter:
             niter += 1
             F, stats = alg.expectation(model, X, 1.0)
@@ -356,6 +356,9 @@ class TestStandardVariationalBayes(unittest.TestCase):
 
             previous_E_llh = current_E_llh
             alg.maximization(model, stats)
+
+        weights = np.exp(model.posterior.expectedLogX())
+        self.assertLess(np.linalg.norm(weights - np.array([0.5, 0.5])), 0.01)
 
         m = model.components[0].posterior.mu
         norm = np.linalg.norm(m - np.array([-2, -2]))
