@@ -62,8 +62,8 @@ class Dirichlet(Model, Prior):
 
         """
         params = {}
-        dim = config.getint('dim')
-        params['alphas'] = np.ones(dim) * config.getfloat('alpha')
+        dim = int(config['dim'])
+        params['alphas'] = np.ones(dim) * float(config['alpha'])
         return params
 
     def __init__(self, params):

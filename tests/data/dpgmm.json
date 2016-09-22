@@ -1,0 +1,18 @@
+{
+    type: BayesianMixture,
+    prior: {
+        type: Dirichlet,
+        dim: 2,
+        alpha: 3
+    }
+    component: {
+       type: BayesianGaussianDiagCov,
+        prior: {
+            type: NormalGamma
+            kappa: 5
+            alpha: 3
+            beta: 3
+            random_init: true
+        }
+    }
+}

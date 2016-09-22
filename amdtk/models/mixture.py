@@ -165,7 +165,7 @@ class BayesianMixture(Model, VBModel, DiscreteLatentModel):
             E_log_p_X[:, i] *= weight
         log_norm = logsumexp(E_log_p_X, axis=1)
         E_log_P_Z = (E_log_p_X.T - log_norm).T
-        return log_norm, (np.exp(E_log_P_Z), g_data)
+        return log_norm.sum(), (np.exp(E_log_P_Z), g_data)
 
     def KLPosteriorPrior(self):
         """KL divergence between the posterior and the prior densities.

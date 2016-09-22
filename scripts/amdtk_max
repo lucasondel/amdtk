@@ -1,0 +1,43 @@
+#!/usr/bin/env python
+
+"""Update the hyper-parameters of the posterior distribution of the
+Bayesian phone loop model.
+"""
+
+import argparse
+import pickle
+import amdtk
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('model', type=argparse.FileType('rb'),
+                        help='model to maximize')
+    parser.add_argument('stats', type=argparse.FileType('rb'),
+                        help='statistics files for the current model')
+    parser.add_argument('output', type=argparse.FileType('wb'),
+                        help='the updated model')
+    args = parser.parse_args()
+
+    # load the model.
+    model = pickle.load(args.model)
+
+    # Load the sufficient statistics.
+    F, stats = pickle.load(args.stats)
+    
+    # Load the specified algorithm.
+    alg = amdtk.StandardVariationalBayes()
+
+    # VB-maximization step.
+    alg.maximization(model, stats)
+
+    # Print the lower bound of log-likelihood.
+    print(F - model.KLPosteriorPrior())
+
+    # Dump the updated model on the disk.
+    pickle.dump(model, args.output)
+
+if __name__ == '__main__':
+    main()
+else:
+    raise ImportError('this script cannot be imported')

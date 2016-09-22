@@ -1,0 +1,48 @@
+#!/usr/bin/env python
+
+"""Accumulate the sufficient statistics computed during the
+"expectation" step of the training.
+"""
+
+import argparse
+import pickle
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('stats', help='list stats files computed with the '
+                        'current model')
+    parser.add_argument('output', type=argparse.FileType('wb'),  help='the '
+                        'accumulated statistics')
+    args = parser.parse_args()
+
+    # Iterate over all stats and accumulate them.
+    with open(args.stats, 'r') as f:
+        for i, line in enumerate(f):
+            path = line.strip()
+
+            # Use the first stats as initialization
+            if i == 0:
+                with open(path, 'rb') as f2:
+                    F0, stats0 = pickle.load(f2)
+            else:
+                with open(path, 'rb') as f2:
+                    F, stats = pickle.load(f2)
+
+                # Accumuate the lower bound on the log-likelihood.
+                F0 += F
+
+                # Accumulate the stats.
+                for key in stats:
+                    try:
+                        stats0[key] += stats[key]
+                    except KeyError:
+                        stats0[key] = stats[key]
+
+    # Dump the accumulated stats on the disk.
+    pickle.dump((F0, stats0), args.output)
+
+if __name__ == '__main__':
+    main()
+else:
+    raise ImportError('this script cannot be imported')

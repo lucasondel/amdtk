@@ -77,8 +77,8 @@ class DirichletProcess(Model, Prior):
 
         """
         params = {}
-        params['T'] = config.getint('truncation')
-        params['gamma'] = config.getfloat('concentration')
+        params['T'] = int(config['truncation'])
+        params['gamma'] = float(config['concentration'])
         return params
 
     def __init__(self, params):

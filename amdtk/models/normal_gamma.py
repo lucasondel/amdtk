@@ -79,10 +79,14 @@ class NormalGamma(Model, Prior):
 
         """
         params = {}
-        params['mu'] = data['mean']
-        params['kappa'] = config.getfloat('kappa')
-        params['alpha'] = config.getfloat('alpha')
-        params['beta'] = config.getfloat('beta') * data['var']
+        if config['random_init']:
+            dc = np.diag(data['var'])
+            params['mu'] = np.random.multivariate_normal(data['mean'], dc)
+        else:
+            params['mu'] = data['mean']
+        params['kappa'] = float(config['kappa'])
+        params['alpha'] = float(config['alpha'])
+        params['beta'] = float(config['beta']) * data['var']
         return params
 
     def __init__(self, params):

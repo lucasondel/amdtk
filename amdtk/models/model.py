@@ -3,8 +3,7 @@
 
 import uuid
 import abc
-import configparser
-import os
+import json
 
 
 class ModelError(Exception):
@@ -119,13 +118,13 @@ class Model(metaclass=abc.ABCMeta):
         pass
 
     @classmethod
-    def create(cls, config_file, data):
+    def create(cls, config, data):
         """Create a model from a configuration file.
 
         Parameters
         ----------
-        config_file : str
-            Path to the configuration file of the object.
+        config : str
+            Configuration of the model.
         data : dict
             Extra data that may be used for initializing the model.
 
@@ -135,15 +134,7 @@ class Model(metaclass=abc.ABCMeta):
             Created model.
 
         """
-        if not os.path.exists(config_file):
-            print(os.getcwd())
-            raise FileNotFoundError(config_file)
-
-        config = configparser.ConfigParser()
-        config.read(config_file)
-        if len(config.sections()) > 1:
-            raise MultipleModelDefinitionsError(config_file)
-        model_name = config.sections()[0]
+        model_name = config['type']
         amdtk_module = __import__('amdtk')
         models = getattr(amdtk_module, 'models')
         try:
@@ -155,7 +146,7 @@ class Model(metaclass=abc.ABCMeta):
         if failed:
             raise UnknownModelError(model_name)
 
-        params = model_class.loadParams(config[model_name], data)
+        params = model_class.loadParams(config, data)
         return model_class(params)
 
     @abc.abstractmethod

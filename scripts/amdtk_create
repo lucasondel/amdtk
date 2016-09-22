@@ -4,6 +4,7 @@
 
 import argparse
 import pickle
+import json
 import amdtk
 
 
@@ -28,7 +29,8 @@ def main():
         stats = pickle.load(f)
 
     # Create the model
-    model = amdtk.models.Model.create(args.config, stats)
+    with open(args.config, 'r') as f:
+        model = amdtk.models.Model.create(json.load(f), stats)
 
     # Dump the model on the disk.
     with open(args.output, 'wb') as f:
