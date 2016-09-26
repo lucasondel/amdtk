@@ -6,11 +6,13 @@ Bayesian phone loop model.
 
 import argparse
 import pickle
+import json
 import amdtk
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('alg_config', help='training algorithm configuration')
     parser.add_argument('model', type=argparse.FileType('rb'),
                         help='model to maximize')
     parser.add_argument('stats', type=argparse.FileType('rb'),
@@ -26,16 +28,27 @@ def main():
     F, stats = pickle.load(args.stats)
     
     # Load the specified algorithm.
-    alg = amdtk.StandardVariationalBayes()
+    with open(args.alg_config, 'r') as f:
+        config = json.load(f)
+    alg = amdtk.VariationalBayes.create(config)
 
     # VB-maximization step.
     alg.maximization(model, stats)
 
     # Print the lower bound of log-likelihood.
     print(F - model.KLPosteriorPrior())
+    #print(F, model.KLPosteriorPrior())
 
     # Dump the updated model on the disk.
     pickle.dump(model, args.output)
+    
+    # Store the number of step of the algorithm.
+    try:
+        config['step'] += 1
+    except KeyError:
+        config['step'] = 1
+    with open(args.alg_config, 'w') as f:
+        json.dump(config, f)
 
 if __name__ == '__main__':
     main()

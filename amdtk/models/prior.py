@@ -82,6 +82,33 @@ class Prior(metaclass=abc.ABCMeta):
 
         """
         pass
+    
+    @abc.abstractmethod
+    def newPosteriorFromGrad(self, stats, old_posterior, lrate, total_nframes, 
+                             grad_nframes):
+        """Create a new posterior distribution from the prior 
+        from the Variational Bayes gradient.
+
+        Parameters
+        ----------
+        stats : stats object
+            Accumulated sufficient statistics for the update.
+        old_posterior : :class:`Prior`
+            The old posterior.
+        lrate : float
+            Scale of the gradient.
+        total_nframes : int
+            Number of frames for the whole training set.
+        grad_nframes : int
+            Number of frames used to compute the gradient.
+
+        Returns
+        -------
+        post : :class:`Model`
+            New posterior distribution.
+
+        """
+        pass
 
 class PriorStats(metaclass=abc.ABCMeta):
     """Abstract base class for the prior statistics."""
@@ -111,76 +138,19 @@ class EmptyPrior(Prior, Model):
         super().__init__(params)
 
     def stats(self, stats, X, data, weights, model_id=None):
-        """Compute the sufficient statistics for the training..
-
-        Parameters
-        ----------
-        stats : dict
-            Dictionary where to store the stats for each model.
-        X : numpy.ndarray
-            Data on which to accumulate the stats.
-        data : dict
-            Data specific to each sub-model with to use to accumulate
-            the stats.
-        weights : numpy.ndarray
-            Weights to apply when building the stats.
-        model_id : int
-            Use the specified model_id to store the statistics.
-
-        """
         pass
 
     def expectedX(self):
-        """Expected value of the the random variable of the prior.
-
-        Returns
-        -------
-        E_X : object
-            E[X]
-
-        """
         return 0.
 
     def expectedLogX(self):
-        """Expected value of the log of the random variable of the
-        prior.
-
-        Returns
-        -------
-        E_X : object
-            E[log X]
-
-        """
         return 0.
 
     def KL(self, other):
-        """Kullback-Leibler divergence
-
-        Parameters
-        ----------
-        other : :class:`Prior`
-            Other density/distribution with which to compute the KL
-            divergence.
-
-        Returns
-        -------
-        kl : float
-            KL(self, other)
-        """
         return 0.
 
     def newPosterior(self, stats):
-        """Create a new posterior distribution from the prior.
-
-        Parameters
-        ----------
-        stats : stats object
-            Accumulated sufficient statistics for the update.
-
-        Returns
-        -------
-        post : :class:`Model`
-            New posterior distribution.
-
-        """
         return self
+    
+    def newPosteriorFromGrad(self, stats, total_nframes, grad_nframes):
+        pass

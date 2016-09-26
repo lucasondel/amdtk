@@ -126,17 +126,33 @@ class NormalGamma(Model, Prior):
     def mu(self):
         return self.params['mu']
 
+    @mu.setter
+    def mu(self, value):
+        self.params['mu'] = value
+
     @property
     def kappa(self):
         return self.params['kappa']
+
+    @kappa.setter
+    def kappa(self, value):
+        self.params['kappa'] = value
 
     @property
     def alpha(self):
         return self.params['alpha']
 
+    @alpha.setter
+    def alpha(self, value):
+        self.params['alpha'] = value
+
     @property
     def beta(self):
         return self.params['beta']
+
+    @beta.setter
+    def beta(self, value):
+        self.params['beta'] = value
 
     def stats(self, stats, X, data, weights):
         """Compute the sufficient statistics for the training..
@@ -211,15 +227,40 @@ class NormalGamma(Model, Prior):
         E_mean, E_prec = p.expectedX()
         _, E_log_prec = p.expectedLogX()
 
-        val = .5 * (np.log(p.kappa) - np.log(q.kappa))
-        val += - .5*(1 - q.kappa * (1. / p.kappa + E_prec * (p.mu - q.mu)**2))
-        val += - gammaln(p.alpha) - gammaln(q.alpha)
-        val += p.alpha * np.log(p.beta) - q.alpha * np.log(q.beta)
-        val += E_log_prec * (p.alpha - q.alpha)
-        val += - E_prec * (p.beta - q.beta)
-        val = val.sum()
+        assert p.alpha > 0
+        assert (p.beta > 0).all()
+        assert q.alpha > 0
+        assert (q.beta > 0).all()
 
-        return val
+        val = 0
+        
+        val -= .5 * np.log(q.kappa)
+        val -= .5 * (E_log_prec)
+        val += .5 * np.log(2 * np.pi)
+        val += .5 * ((q.kappa * E_prec) * (p.mu - q.mu)**2)
+        val += .5 * q.kappa / p.kappa
+        val += gammaln(q.alpha) 
+        val -= q.alpha * np.log(q.beta)
+        val -= (q.alpha - 1) * E_log_prec
+        val += q.beta * E_prec
+        
+        val += .5 * np.log(p.kappa)
+        val += .5 * E_log_prec
+        val -= .5 * (1 + np.log(2 * np.pi))
+        val -= gammaln(p.alpha) 
+        val += np.log(p.beta)
+        val += (p.alpha - 1) * psi(p.alpha) 
+        val -= p.alpha
+
+        #val = .5 * (np.log(p.kappa) - np.log(q.kappa))
+        #val += - .5*(1 - q.kappa * (1. / p.kappa + E_prec * (p.mu - q.mu)**2))
+        #val += - gammaln(p.alpha) - gammaln(q.alpha)
+        #val += p.alpha * np.log(p.beta) - q.alpha * np.log(q.beta)
+        #val += E_log_prec * (p.alpha - q.alpha)
+        #val += - E_prec * (p.beta - q.beta)
+        #val = val.sum()
+
+        return val.sum()
 
     def newPosterior(self, stats):
         """Create a new Normal-Gamma density given the parameters of the
@@ -248,3 +289,53 @@ class NormalGamma(Model, Prior):
             'beta': self.beta + 0.5*(-v + s2 + self.kappa * self.mu**2)
         }
         return NormalGamma(new_params)
+    
+    def newPosteriorFromGrad(self, stats, old_posterior, lrate, total_nframes, 
+                             grad_nframes):
+        """Create a new Normal-Gamma density given the parameters of the
+        current model and the statistics provided.
+
+        Parameters
+        ----------
+        stats : :class:NormalGammaStats
+            Accumulated sufficient statistics for the update.
+        old_posterior : :class:`NormalGamma`
+            The old posterior.
+        lrate : float
+            Scale of the gradient.
+        total_nframes : int
+            Number of frames for the whole training set.
+        grad_nframes : int
+            Number of frames used to compute the gradient.
+
+        Returns
+        -------
+        post : :class:NormalGamma
+            New NormalGamma density.
+
+        """
+        d = float(total_nframes) / float(grad_nframes)
+        s0 = d * stats[0]
+        s1 = d * stats[1]
+        s2 = d * stats[2]
+        v = (self.kappa * self.mu + s1)**2
+        v /= (self.kappa + s0)
+
+        old_mu = old_posterior.mu
+        old_kappa = old_posterior.kappa
+        old_alpha = old_posterior.alpha
+        old_beta = old_posterior.beta
+
+        new_mu = (self.kappa * self.mu + s1) / (self.kappa + s0)
+        new_kappa = self.kappa + s0 
+        new_alpha = self.alpha + .5 * s0
+        new_beta = self.beta + .5*(-v + s2 + self.kappa * self.mu**2)
+
+        new_params = {
+            'mu': old_mu + lrate * (-old_mu + new_mu),
+            'kappa': old_kappa + lrate * (-old_kappa + new_kappa),
+            'alpha': old_alpha + lrate * (-old_alpha + new_alpha),
+            'beta': old_beta + lrate * (-old_beta + new_beta)
+        }
+        return NormalGamma(new_params)
+

@@ -16,6 +16,7 @@ def main():
                         help='scaling of the acoustic score')
     parser.add_argument('--new_feats', help='features files on which to '
                                             'accumulate the stats.')
+    parser.add_argument('alog', help='training algorithm configuration')
     parser.add_argument('model', help='model to fit on the data')
     parser.add_argument('feats', help='features file')
     parser.add_argument('out', help='accumulated statistics')

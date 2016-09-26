@@ -257,6 +257,33 @@ class VBModel(metaclass=abc.ABCMeta):
 
         """
         self.posterior = self.prior.newPosterior(stats)
+    
+    @abc.abstractmethod
+    def gradUpdatePosterior(self, stats, lrate, total_nframes, grad_nframes):
+        """Gradient update of the parameters of the posterior density given 
+        the accumulated statistics.
+
+        Parameters
+        ----------
+        stats : obj
+            Accumulated sufficient statistics for the update.
+        lrate : float
+            Scale of the gradient.
+        total_nframes : int
+            Number of frames for the whole training set.
+        grad_nframes : int
+            Number of frames used to compute the gradient.
+
+        Returns
+        -------
+        post : :class:`Prior`
+            New posterior density/distribution.
+
+        """
+        self.posterior = self.prior.newPosteriorFromGrad(stats, lrate,
+                                                         total_nframes,
+                                                         grad_nframes)
+
 
 
 class DiscreteLatentModel(metaclass=abc.ABCMeta):
@@ -279,3 +306,4 @@ class DiscreteLatentModel(metaclass=abc.ABCMeta):
     def k(self):
         """Number of state for the hidden variable."""
         return len(self.components)
+

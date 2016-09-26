@@ -178,3 +178,35 @@ class Dirichlet(Model, Prior):
             'alphas': self.alphas + stats[0]
         }
         return Dirichlet(new_params)
+    
+    def newPosteriorFromGrad(self, stats, old_posterior, lrate, total_nframes, 
+                             grad_nframes):
+        """Create a new Dirichlet density given the parameters of the
+        current model and the statistics provided.
+
+        Parameters
+        ----------
+        stats : :class:DirichletStats
+            Accumulated sufficient statistics for the update.
+        old_posterior : :class:`Prior`
+            The old posterior.
+        lrate : float
+            Scale of the gradient.
+        total_nframes : int
+            Number of frames for the whole training set.
+        grad_nframes : int
+            Number of frames used to compute the gradient.
+
+        Returns
+        -------
+        post : :class:`Dirichlet`
+            New Dirichlet density.
+
+        """
+        d = float(total_nframes) / float(grad_nframes)
+        old_alphas = old_posterior.alphas
+        new_alphas = self.alphas + d * stats[0]
+        new_params = {
+            'alphas': old_alphas + lrage * (-old_alphas + new_alphas)
+        }
+        return Dirichlet(new_params)

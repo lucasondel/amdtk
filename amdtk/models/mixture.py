@@ -195,3 +195,33 @@ class BayesianMixture(Model, VBModel, DiscreteLatentModel):
                 stats[self.posterior.uuid])
         for component in self.components:
             component.updatePosterior(stats)
+    
+    def gradUpdatePosterior(self, stats, lrate, total_nframes, grad_nframes):
+        """Gradient update of the parameters of the posterior density given 
+        the accumulated statistics.
+
+        Parameters
+        ----------
+        stats : obj
+            Accumulated sufficient statistics for the update.
+        lrate : float
+            Scale of the gradient.
+        total_nframes : int
+            Number of frames for the whole training set.
+        grad_nframes : int
+            Number of frames used to compute the gradient.
+
+        Returns
+        -------
+        post : :class:`Prior`
+            New posterior density/distribution.
+
+        """
+        if self.posterior.uuid in stats:
+            self.posterior = self.prior.newPosteriorFromGrad(
+                stats[self.posterior.uuid], self.posterior, lrate, 
+                total_nframes, grad_nframes)
+        for component in self.components:
+            component.gradUpdatePosterior(stats, lrate, total_nframes, 
+                                          grad_nframes)
+        

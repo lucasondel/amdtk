@@ -213,3 +213,38 @@ class DirichletProcess(Model, Prior):
         dp.g1 = self.g1 + stats[0]
         dp.g2 = self.g2 + stats[1]
         return dp
+    
+    def newPosteriorFromGrad(self, stats, old_posterior, lrate, total_nframes, grad_nframes):
+        """Create a new posterior distribution from the prior 
+        from the Variational Bayes gradient.
+
+        Parameters
+        ----------
+        stats : stats object
+            Accumulated sufficient statistics for the update.
+        old_posterior : :class:`Prior`
+            The old posterior.
+        lrate : float
+            Scale of the gradient.
+        total_nframes : int
+            Number of frames for the whole training set.
+        grad_nframes : int
+            Number of frames used to compute the gradient.
+
+        Returns
+        -------
+        post : :class:`Model`
+            New posterior distribution.
+
+        """
+        d = float(total_nframes) / float(grad_nframes)
+        new_params = {
+            'T': self.T,
+            'gamma': self.gamma
+        }
+        dp = DirichletProcess(new_params)
+        old_g1 = old_posterior.g1
+        old_g2 = old_posterior.g2
+        dp.g1 = old_g1 + lrate * (-old_g1 + self.g1 + d * stats[0])
+        dp.g2 = old_g2 + lrate * (-old_g2 + self.g2 + d * stats[1])
+        return dp

@@ -1,3 +1,4 @@
 
 from .variational_bayes import VariationalBayes
 from .variational_bayes import StandardVariationalBayes
+from .variational_bayes import StochasticGradientVariationalBayes

@@ -36,6 +36,7 @@ def main():
     mean = mean/count
     cov = cov/count - mean**2
     stats = {'mean': mean, 'var': cov}
+    print('statistics accumulated on', count, 'frames')
 
     # Dump the stats on the disk.
     with open(args.output, 'wb') as f:

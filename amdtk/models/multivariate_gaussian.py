@@ -163,3 +163,30 @@ class BayesianGaussianDiagCov(Model, VBModel):
         if self.posterior.uuid in stats:
             self.posterior = self.prior.newPosterior(
                 stats[self.posterior.uuid])
+    
+    def gradUpdatePosterior(self, stats, lrate, total_nframes, grad_nframes):
+        """Gradient update the parameters of the posterior density given 
+        the accumulated statistics.
+
+        Parameters
+        ----------
+        stats : obj
+            Accumulated sufficient statistics for the update.
+        lrate : float
+            Scale of the gradient.
+        total_nframes : int
+            Number of frames for the whole training set.
+        grad_nframes : int
+            Number of frames used to compute the gradient.
+
+        Returns
+        -------
+        post : :class:`Prior`
+            New posterior density/distribution.
+
+        """
+        if self.posterior.uuid in stats:
+            self.posterior = self.prior.newPosteriorFromGrad(
+                stats[self.posterior.uuid], self.posterior, lrate, 
+                total_nframes, grad_nframes)
+

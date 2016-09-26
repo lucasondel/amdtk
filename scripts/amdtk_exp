@@ -7,11 +7,13 @@ of the model for the given data.
 
 import argparse
 import pickle
+import json
 import amdtk
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('alg_config', help='training algorithm configuration')
     parser.add_argument('model', help='model to fit on the data')
     parser.add_argument('feats', help='features file')
     parser.add_argument('out', help='accumulated statistics')
@@ -25,7 +27,8 @@ def main():
     X = amdtk.readHtk(args.feats)
 
     # Load the specified algorithm.
-    alg = amdtk.StandardVariationalBayes()
+    with open(args.alg_config, 'r') as f:
+        alg = amdtk.VariationalBayes.create(json.load(f))
 
     # VB expectation.
     F, stats = alg.expectation(model, X, 1.0)
