@@ -41,7 +41,7 @@ def get_labels_clusters(T_ref, T_new):
 def align(T_ref, T_new, labels, clusters):
     counts_labels = np.zeros(len(labels))
     counts_clusters = np.zeros(len(clusters))
-    counts = np.zeros((len(clusters), len(labels))) + 1
+    counts = np.zeros((len(clusters), len(labels))) + 1e-64
     for utt in T_ref.keys():
         data_ref = T_ref[utt]
         data_new = T_new[utt]
@@ -87,6 +87,7 @@ def main():
     # reference label.
     #-----------------------------------------------------------------------
     counts, counts_labels, counts_clusters = align(T_ref, T_new, labels, clusters)
+    print('# counts:', counts.sum())
 
     # Estimate the conditional distribution of the reference label given the 
     # cluster.
@@ -95,9 +96,9 @@ def main():
 
     # Estimate the marginal distribution of the reference cluster labels. 
     #-----------------------------------------------------------------------
-    p_X = np.asarray(counts.sum(axis=0), dtype=float) + 1e-12
+    p_X = np.asarray(counts.sum(axis=0), dtype=float) 
     p_X /= p_X.sum()
-    p_Y = np.asarray(counts.sum(axis=1), dtype=float) + 1e-12
+    p_Y = np.asarray(counts.sum(axis=1), dtype=float) 
     p_Y /= p_Y.sum()
 
     # Evaluate the conditional and marginal entropy.
@@ -114,6 +115,7 @@ def main():
     print('# proposed units:', len(clusters))
     print('H(X):', H_X)
     print('H(Y):', H_Y)
+    print('H(X|Y):', H_X_given_Y)
     print('2*I(X;Y)/(H(X) + H(Y)):', 100*2*I_XY/(H_X + H_Y), '%')
     print('I(X;Y)/(H(X)):', 100*I_XY/(H_X ), '%')
     print('I(X;Y):',I_XY)
