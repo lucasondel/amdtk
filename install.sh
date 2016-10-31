@@ -122,3 +122,6 @@ ln -fs "$amdtk_root/recipes/timit/utils" "$amdtk_root/recipes/wsj_no_punc/utils"
 # zerocost recipe
 cp "$amdtk_root/tools/path.sh" "$amdtk_root/recipes/zerocost" || exit 1
 ln -fs "$amdtk_root/recipes/timit/utils" "$amdtk_root/recipes/zerocost/utils" || exit 1
+# xitsonga recipe
+cp "$amdtk_root/tools/path.sh" "$amdtk_root/recipes/xitsonga" || exit 1
+ln -fs "$amdtk_root/recipes/timit/utils" "$amdtk_root/recipes/xitsonga/utils" || exit 1
