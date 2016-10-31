@@ -60,6 +60,9 @@ if [ -z "`conda env list | grep $env_name`" ]; then
     conda env create --name $env_name python=3 -f "$amdtk_root/py35_amdtk.yml"
 fi || exit 1
 
+# Activate the new environment to install other dependencies.
+source activate $env_name
+
 # Install sselogsumexp.
 echo "Installing sselogsumexp... "
 if [ ! -e "$amdtk_root/tools/logsumexp" ]; then
@@ -77,8 +80,8 @@ if [ ! -e $amdtk_root/tools/sph2pipe_v2.5.tar.gz ]; then
 fi || exit 1
 
 if [ ! -e $amdtk_root/tools/sph2pipe_v2.5 ]; then
-    tar xvf $amdtk_root/tools/sph2pipe_v2.5.tar.gz 
-    mv $amdtk_root/sph2pipe_v2.5 $amdtk_root/tools
+    cd "$amdtk_root/tools"
+    tar xvf sph2pipe_v2.5.tar.gz
     cd $amdtk_root/tools/sph2pipe_v2.5
     gcc -o sph2pipe *.c -lm 
     cd ../../
@@ -116,4 +119,6 @@ ln -fs "$amdtk_root/recipes/timit/utils" "$amdtk_root/recipes/babel_turkish_clsp
 # WSJ no punctuation recipe
 cp "$amdtk_root/tools/path.sh" "$amdtk_root/recipes/wsj_no_punc" || exit 1
 ln -fs "$amdtk_root/recipes/timit/utils" "$amdtk_root/recipes/wsj_no_punc/utils" || exit 1
-
+# zerocost recipe
+cp "$amdtk_root/tools/path.sh" "$amdtk_root/recipes/zerocost" || exit 1
+ln -fs "$amdtk_root/recipes/timit/utils" "$amdtk_root/recipes/zerocost/utils" || exit 1
