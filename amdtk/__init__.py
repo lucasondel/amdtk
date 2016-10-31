@@ -1,4 +1,4 @@
-
+from .core import readCTM
 from .core import readHtk
 from .core import writeHtk
 from .core import readHtkLabels
@@ -25,4 +25,4 @@ from .core import initNgramLM
 from .core import sampleNgramLM
 from .core import resampleNgramLM
 from .core import NgramLMLogLikelihood
-from .core  import samplePathFromFst
+from .core import samplePathFromFst
