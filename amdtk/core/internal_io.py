@@ -21,6 +21,7 @@ Here is the list of the supported formats:
 from struct import unpack, pack
 import os
 import gzip
+import operator
 import numpy as np
 
 # HTK format constants.
@@ -495,3 +496,71 @@ def readHtkLattice(lattfile, ac_weight=1., lm_weight=1., gzipped=True):
                 fst_lattice.add_arc(start_node, arc)
     return fst_lattice, id2label
     
+
+def readCTM(fp, pos=(0, 1, 2, 3), has_duration=False, file_transfrom=None,
+             blacklist=(), add_bool=False, offset_from_filename=None,
+             file_segments=None):
+    """ read a ctm file
+
+    :param fp: file pointer to read ctm file to from
+    :param pos: 4 element tuple with positions of (filename, word, start, end)
+    :param has_duration: ctm uses duration instead of end time
+    :param file_transfrom: transform function to modify filename
+    :param blacklist: blacklist of words to skip when reading
+    :param add_bool: add boolen to ctm transcription
+    :param offset_from_filename: function to derive time offset from filename
+    :param file_segments: tuples containing (filename, start, end) of segments
+                          ctm will be created with 'filename_start_end' as key
+    :return: dict with transcription and timings per file
+
+    Example for ctm with add_bool=True
+    reference_ctm['c1lc021h'] = \
+        [('MR.', 0.91, 1.26, True),
+         ('MAUCHER', 1.26, 1.6, True)]
+    """
+
+    ctm = dict()
+    for line in fp:
+        split_line = line.split()
+        filename = split_line[pos[0]]
+        word = split_line[pos[1]]
+        start = float(split_line[pos[2]])
+        end = float(split_line[pos[3]])
+
+        if has_duration:
+            end += start
+
+        if offset_from_filename is not None:
+            offset = offset_from_filename(filename)
+            start += offset
+            end += offset
+
+        if file_transfrom is not None:
+            filename = file_transfrom(filename)
+
+        if word not in blacklist:
+            if add_bool:
+                entry = (word, start, end, False)
+            else:
+                entry = (word, start, end)
+
+            if filename in ctm:
+                ctm[filename].append(entry)
+            else:
+                ctm[filename] = [entry]
+
+    ctm = {filename: sorted(entry, key=operator.itemgetter(1))
+            for filename, entry in ctm.items()}
+
+    if file_segments is not None:
+        segments_ctm = dict()
+        for file, start, end in file_segments:
+            filename = '{}_{:06d}-{:06d}'.format(file,
+                                                 int(round(start*1000)),
+                                                 int(round(end*1000)))
+            segments_ctm[filename] = [entry for entry in ctm[file]
+                                      if entry[1] >= start and entry[2] <= end]
+
+        return segments_ctm
+
+    return ctm
