@@ -1,0 +1,66 @@
+'amdtk' installation instructions:
+----------------------------------
+These installation instructions assume that the environment variable
+'amdtk_root' contains the path to your clone of the 'amdtk' repository:
+  % git clone https://github.com/iondel/amdtk.git
+  % amdtk_root=$(pwd -P)/amdtk
+
+Prerequisites:
+--------------
+  - HTK (Tested with HCopy, HBuild and HVite version 3.5 beta (2))
+  - Anaconda (Tested with Miniconda3-4.2.11-Linux-x86_64)
+  - pywrapfst (Tested with OpenFst version 1.5.4)
+
+HTK installation:
+-----------------
+The tools HCopy, HBuild and HVite from the HTK distribution are needed for
+feature extraction and lattice creation. If you have HTK 3.4.1 installed, it
+can be used. If you don't have HTK installed, you can install it as follows:
+Download HTK 3.5 beta (2) from http://htk.eng.cam.ac.uk/download.shtml into
+"$amdtk_root/tools":
+  % cd "$amdtk_root/tools"
+  % tar -xzf HTK-3.5.beta-2.tar.gz
+  % cd "$amdtk_root/tools/htk/HTKLib"
+  % make -f MakefileCPU
+  % cd "$amdtk_root/tools/htk/HTKTools"
+  % make -f MakefileCPU
+Make sure that you add "$amdtk_root/tools/htk/HTKTools" to your PATH variable
+prior to installing 'amdtk'.
+  PATH="$PATH:$amdtk_root/tools/htk/HTKTools"
+
+Anaconda installation:
+----------------------
+You need an Anaconda installation which allows you to create an own evironment.
+If you don't have Anaconda installed, you can use miniconda. Also make sure
+'pyyaml' is installed:
+  % cd "$amdtk_root/tools"
+  % wget https://repo.continuum.io/miniconda/Miniconda3-4.2.11-Linux-x86_64.sh
+  % bash Miniconda3-4.2.11-Linux-x86_64.sh -b -p "$amdtk_root/tools/miniconda3"
+  % PATH="$amdtk_root/tools/miniconda3/bin:$PATH"
+  % conda install -y pyyaml
+
+'amdtk' installation:
+---------------------
+If the above prerequesites are fulfilled, 'amdtk' can be installed. If your
+Anaconda instalation resides in "$HOME/anaconda3", remove the option
+'-p $amdtk_root/tools/miniconda3'. If you are using your own Anaconda
+installation, adjust the path accordingly. Note that amdtk will create a
+new environement, so you need a writeable anaconda installation:
+  % cd "$amdtk_root"
+  % ./install.sh -p $amdtk_root/tools/miniconda3
+
+pywrapfst installation:
+-----------------------
+After installing 'amdtk', pywrapfst (an openfst interface for python) has to be
+installed into the created environment. If you are using your own Anaconda
+environment, you will have to change "$amdtk_root/tools/miniconda3":
+  % cd "$amdtk_root/tools"
+  % wget http://openfst.org/twiki/pub/FST/FstDownload/openfst-1.5.4.tar.gz
+  % tar -xzf openfst-1.5.4.tar.gz
+  % cd "$amdtk_root/tools/openfst-1.5.4"
+  % patch -p1 < ../openfst-python3.patch
+  % PATH="$amdtk_root/tools/miniconda3/bin:$PATH"
+  % source activate py35_amdtk
+  % ./configure --enable-python --prefix="$amdtk_root/tools/miniconda3/envs/py35_amdtk"
+  % make
+  % make install
