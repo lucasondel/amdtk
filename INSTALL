@@ -42,10 +42,10 @@ If you don't have Anaconda installed, you can use miniconda. Also make sure
 'amdtk' installation:
 ---------------------
 If the above prerequesites are fulfilled, 'amdtk' can be installed. If your
-Anaconda instalation resides in "$HOME/anaconda3", remove the
-'-p $amdtk_root/tools/miniconda3' option. If you are using your own Anaconda
-installation, adjust the path accordingly. Note that amdtk will create a new
-environement, so you need a writeable anaconda installation:
+Anaconda instalation resides in "$HOME/anaconda3", remove the option
+'-p $amdtk_root/tools/miniconda3'. If you are using your own Anaconda
+installation, adjust the path accordingly. Note that amdtk will create a
+new environement, so you need a writeable anaconda installation:
   % cd "$amdtk_root"
   % ./install.sh -p $amdtk_root/tools/miniconda3
 
