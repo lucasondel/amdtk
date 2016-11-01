@@ -46,9 +46,6 @@ if [ ! -e "$anaconda_path/bin/python" ]; then
     exit 1
 fi
 
-# Directory where we will install the external tools.
-mkdir -p $amdtk_root/tools
-
 # Set the path to the correct python distribution for the the rest of the 
 # installation.
 unset PYTHONPATH
