@@ -207,6 +207,10 @@ class ParallelEnv(metaclass=abc.ABCMeta):
         profile: string
             Path to the profile file (i.e. shell script that will be
             executed before running the  command).
+        python_script: bolean
+            Treat command as python script to be run with python file
+            list worker. Script needs to be importable and have a main
+            function accepting one agument in the form of sys.argv.
 
         """
         self.script_path = os.path.join(self.qdir, name+'.task')
@@ -335,7 +339,6 @@ JOB_ID=$1
             for f in to_close:
                 f.close()
         except KeyboardInterrupt:
-            processes=[]
             for i in range(self.ntasks):
                 cmd_list = ['ccskill',
                             '{}-{}-{}'.format(self.name, os.getpid(), i+1)]
