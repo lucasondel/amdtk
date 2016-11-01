@@ -64,6 +64,33 @@ echo Job ended on $(date)
 """
 
 
+# Template for the python file_list_worker. Beware before changing this
+# script: AMDTK recipes relies on this specific processing so be careful.
+PYTHON_JOB_TEMPLATE = """{header}
+
+echo "Job started on $(date)."
+echo "Hostname: $(hostname)."
+
+cd {cwd}
+source {profile}
+
+ITEM1={{0}}
+ITEM2={{1}}
+
+file_list_worker {flist} {njobs} ${{JOB_ID}} {cmd}
+retcode=$?
+
+if [ $retcode -ne 0 ]; then
+    echo 1 "{qdir}/{name}.$JOB_ID.log" > {qdir}/{name}."$JOB_ID".status
+    exit 1
+fi
+
+echo 0 "{qdir}/{name}.$JOB_ID.log" > {qdir}/{name}."$JOB_ID".status
+
+echo Job ended on $(date)
+"""
+
+
 class AmdtkUnknownParallelEnvironment(Exception):
     """If the user has specified an unknown environment."""
 
@@ -166,7 +193,7 @@ class ParallelEnv(metaclass=abc.ABCMeta):
         self.ntasks = min(ntasks, self.total)
         self.njobs = math.ceil(self.total / self.ntasks)
 
-    def prepareScript(self, name, cmd, options, profile):
+    def prepareScript(self, name, cmd, options, profile, python_script=False):
         """Final preparation of the script.
 
         Parameters
@@ -202,7 +229,10 @@ class ParallelEnv(metaclass=abc.ABCMeta):
         data['header'] = self.header().format(**data)
 
         with open(self.script_path, 'w') as f:
-            f.write(JOB_TEMPLATE.format(**data))
+            if python_script == True:
+                f.write(PYTHON_JOB_TEMPLATE.format(**data))
+            else:
+                f.write(JOB_TEMPLATE.format(**data))
             st = os.stat(self.script_path)
             os.chmod(self.script_path, st.st_mode | stat.S_IEXEC)
 

@@ -13,6 +13,8 @@ def main():
     parser.add_argument('--ntasks', type=int, default=200,
                         help='maximum number of concurrent tasks')
     parser.add_argument('--options', help='the SGE options')
+    parser.add_argument('--python_script', action='store_true',
+                        help='is importable python script with main function')
     parser.add_argument('name', help='name of the task on the SGE')
     parser.add_argument('list', help='list of files to process')
     parser.add_argument('cmd', help='the general command to execute')
@@ -29,7 +31,8 @@ def main():
     env.computeTaskLoad(args.list, args.ntasks)
 
     # Prepare the script to be executed in the parallel environment.
-    env.prepareScript(args.name, args.cmd, args.options, args.profile)
+    env.prepareScript(args.name, args.cmd, args.options, 
+                      args.profile, args.python_script)
 
     # Run the jobs.
     failed = env.run()

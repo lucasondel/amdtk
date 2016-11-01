@@ -1,0 +1,37 @@
+#!/usr/bin/env python3
+
+"""Worker to run a python script on the elements of a list. The 
+python script needs to be importable and contain a main function
+which accepts a single agument list in the same form as sys.argv.
+"""
+
+import argparse
+from importlib.machinery import SourceFileLoader
+from shutil import which
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('file_list', help='file list to process')
+    parser.add_argument('n_jobs', type=int, help='number of jobs')
+    parser.add_argument('job_id', type=int, help='job id')
+    parser.add_argument('script', help='script file name')
+    parser.add_argument('script_args', nargs=argparse.REMAINDER)
+    worker_args = parser.parse_args()
+    
+    script = which(worker_args.script)
+    module = SourceFileLoader('module', script).load_module()
+    
+    with open(worker_args.file_list) as fid:
+        lines = fid.read().rstrip().splitlines()
+
+    start = (worker_args.job_id - 1)*worker_args.n_jobs
+    end = start + worker_args.n_jobs
+    lines = lines[start:end]
+      
+    for line in lines:
+        split_line = line.split(':')
+        script_args = [script_arg.format(*split_line) for 
+                       script_arg in worker_args.script_args]
+        print('running: {} {}'.format(worker_args.script, ' '.join(script_args)))
+        module.main(script_args)
