@@ -33,5 +33,6 @@ if __name__ == '__main__':
         split_line = line.split(':')
         script_args = [script_arg.format(*split_line) for 
                        script_arg in worker_args.script_args]
-        print('running: {} {}'.format(worker_args.script, ' '.join(script_args)))
+        print('running: {} {}'.format(worker_args.script,
+                                      ' '.join(script_args)))
         module.main(script_args)
