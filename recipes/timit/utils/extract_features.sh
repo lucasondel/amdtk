@@ -30,26 +30,27 @@ t_end=`echo $audio | cut -d'[' -sf3`
 audio=`echo $audio | cut -d'[' -f1`
 
 # If the audio file has NIST SPHERE format convert it to WAV format.
+if test -n "`file $audio | grep symbolic`"
+then
+    audio=`readlink -f $audio`
+fi
+
 if test -n "`file $audio | grep SPHERE`" 
-    then
+then
     if [ ! -z $t_start ] && [ ! -z $t_end ]
-        then
+    then
         sph2pipe -f wav -t ${t_start}:${t_end} $audio $tmp/audio.wav
     else
         sph2pipe -f wav $audio $tmp/audio.wav 
     fi
-elif test -n "`file $audio | grep symbolic`"
-    then
-    audio=`readlink -f $audio`
-    if [ ! -z $t_start ] && [ ! -z $t_end ]
-        then
-        sph2pipe -f wav -t ${t_start}:${t_end} $audio $tmp/audio.wav
-    else
-        sph2pipe -f wav $audio $tmp/audio.wav
-    fi
 else
-    cp $audio $tmp/audio.wav
-    chmod u+w $tmp/audio.wav
+    if [ ! -z $t_start ] && [ ! -z $t_end ]
+    then
+      sox $audio $tmp/audio.wav trim ${t_start} =${t_end}
+    else
+      cp $audio $tmp/audio.wav
+      chmod u+w $tmp/audio.wav
+    fi
 fi
 
 
