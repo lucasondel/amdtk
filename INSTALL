@@ -10,9 +10,8 @@ Prerequisites:
   - HTK (Tested with HCopy, HBuild and HVite version 3.5 beta (2))
   - Anaconda (Tested with Miniconda3-4.2.11-Linux-x86_64)
   - pywrapfst (Tested with OpenFst version 1.5.4)
-  - sox (Tested with sox version 14.4.2)
 
-HTK instalation:
+HTK installation:
 -----------------
 The tools HCopy, HBuild and HVite from the HTK distribution are needed for
 feature extraction and lattice creation. If you have HTK 3.4.1 installed, it
@@ -29,19 +28,7 @@ Make sure that you add "$amdtk_root/tools/htk/HTKTools" to your PATH variable
 prior to installing 'amdtk'.
   % PATH="$PATH:$amdtk_root/tools/htk/HTKTools"
   
-sox instalation:
-----------------
-  % cd "$amdtk_root/tools"
-  % wget https://sourceforge.net/projects/sox/files/sox/14.4.2/sox-14.4.2.tar.bz2
-  % cd sox-14.4.2
-  % ./configure --prefix="$amdtk_root/tools/sox-14.4.2"
-  % make
-  % make install
-Make sure that you add "$amdtk_root/tools/sox-14.4.2/bin" to your PATH variable
-prior to installing 'amdtk'.
-  % PATH="$PATH:$amdtk_root/tools/sox-14.4.2/bin"
-
-Anaconda instalation:
+Anaconda installation:
 ----------------------
 You need an Anaconda installation which allows you to create an own evironment.
 If you don't have Anaconda installed, you can use miniconda. Also make sure
@@ -77,3 +64,24 @@ environment, you will have to change "$amdtk_root/tools/miniconda3":
   % ./configure --enable-python --prefix="$amdtk_root/tools/miniconda3/envs/py35_amdtk"
   % make
   % make install
+
+Optional requirements:
+----------------------
+  - sox (Tested with sox version 14.4.2)
+
+sox installation:
+----------------
+sox is the Swiss Army knife of sound processing programs and can be used for
+multiple tasks. It is not actively used and not needed to run 'amdtk'. It is
+only used in the 'extract_features.sh' script to cut out segments of a wav file.
+Install sox only if you want to use that feature. See 'extract_features.sh' for
+the usage in that case. If you don't have sox installed, install it as follows:
+  % cd "$amdtk_root/tools"
+  % wget https://sourceforge.net/projects/sox/files/sox/14.4.2/sox-14.4.2.tar.bz2
+  % cd sox-14.4.2
+  % ./configure --prefix="$amdtk_root/tools/sox-14.4.2"
+  % make
+  % make install
+Make sure that you add "$amdtk_root/tools/sox-14.4.2/bin" to your PATH variable
+prior to installing 'amdtk'.
+  % PATH="$PATH:$amdtk_root/tools/sox-14.4.2/bin"
