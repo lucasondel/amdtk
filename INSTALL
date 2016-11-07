@@ -9,7 +9,6 @@ Prerequisites:
 --------------
   - HTK (Tested with HCopy, HBuild and HVite version 3.5 beta (2))
   - Anaconda (Tested with Miniconda3-4.2.11-Linux-x86_64)
-  - pywrapfst (Tested with OpenFst version 1.5.4)
 
 HTK installation:
 -----------------
@@ -49,11 +48,17 @@ new environement, so you need a writeable anaconda installation:
   % cd "$amdtk_root"
   % ./install.sh -p $amdtk_root/tools/miniconda3
 
+Optional requirements:
+----------------------
+  - pywrapfst (Tested with OpenFst version 1.5.4)
+
 pywrapfst installation:
 -----------------------
-After installing 'amdtk', pywrapfst (an openfst interface for python) has to be
-installed into the created environment. If you are using your own Anaconda
-environment, you will have to change "$amdtk_root/tools/miniconda3":
+After installing 'amdtk', pywrapfst (an openfst interface for python) can be
+installed into the created environment. It is not actively used and not needed
+to run 'amdtk'. It is only imported within unused internal functions. Install
+pywrapfst only if you want to try out those functions. If you are using your own
+Anaconda environment, you will have to change "$amdtk_root/tools/miniconda3":
   % cd "$amdtk_root/tools"
   % wget http://openfst.org/twiki/pub/FST/FstDownload/openfst-1.5.4.tar.gz
   % tar -xzf openfst-1.5.4.tar.gz
