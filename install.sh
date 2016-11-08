@@ -86,17 +86,14 @@ fi || exit 1
 
 
 echo "Creating path file... "
-new_path="$anaconda_path/bin:$amdtk_root/scripts:$amdtk_root/tools/sph2pipe_v2.5:\$PATH"
+new_path="$amdtk_root/scripts:$amdtk_root/tools/sph2pipe_v2.5"
 # Create the path.sh file to use the newly created environment.
 echo "# Setting python environment.            " >  "$amdtk_root/tools/path.sh"
 echo "unset PYTHONPATH                         " >> "$amdtk_root/tools/path.sh"
 echo "export PYTHONPATH=$amdtk_root            " >> "$amdtk_root/tools/path.sh"
 echo "                                         " >> "$amdtk_root/tools/path.sh"
 echo "# Add extra tools to the PATH.           " >> "$amdtk_root/tools/path.sh"
-echo "export PATH=$new_path:$PATH              " >> "$amdtk_root/tools/path.sh"
-echo "                                         " >> "$amdtk_root/tools/path.sh"
-echo "# Selecting the AMDTK environment.       " >> "$amdtk_root/tools/path.sh"
-echo "source activate $env_name                " >> "$amdtk_root/tools/path.sh"
+echo "export PATH=$new_path:$PATH:\$PATH       " >> "$amdtk_root/tools/path.sh"
 echo "                                         " >> "$amdtk_root/tools/path.sh"
 echo "# Disable multithreading.                " >> "$amdtk_root/tools/path.sh"
 echo "export OPENBLAS_NUM_THREADS=1            " >> "$amdtk_root/tools/path.sh"
