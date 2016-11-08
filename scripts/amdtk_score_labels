@@ -7,6 +7,18 @@ import os
 import numpy as np
 from amdtk.core.internal_io import readMlf
 
+class OffsetFromSegmentFile:
+    def __init__(self, segments_file):
+        with open(segments_file) as fp:
+            self.segments_offset = dict()
+            for line in fp:
+                file, start, end = line.split()
+                self.segments_offset[file] = float(start)
+
+    def __call__(self, file):
+        return self.segments_offset[os.path.splitext(file)[0]]
+
+
 def __is_start_or_end_field(field):
     return field.isdigit()
 
@@ -21,7 +33,7 @@ def probability_matrix(counts, alpha=1):
     c = np.array(counts + alpha, dtype=float)
     return (c.T/c.sum(axis=1)).T
 
-def get_labels_clusters(T_ref, T_new):
+def get_labels_clusters(T_ref, T_new, ignore_sil):
     counts = {}
     t_counts = {}
     label_set = set()
@@ -34,17 +46,21 @@ def get_labels_clusters(T_ref, T_new):
             label_set.add(label)
         for t in clusters:
             cluster, start, stop, _, _ = t
-            cluster_set.add(cluster)
+            if not ignore_sil or cluster != 'sil':
+                cluster_set.add(cluster)
 
     return list(label_set), list(cluster_set)
 
-def align(T_ref, T_new, labels, clusters):
+def align(T_ref, T_new, labels, clusters, offset, ignore_sil):
     counts_labels = np.zeros(len(labels))
     counts_clusters = np.zeros(len(clusters))
     counts = np.zeros((len(clusters), len(labels))) + 1e-64
     for utt in T_ref.keys():
         data_ref = T_ref[utt]
         data_new = T_new[utt]
+        label_offset = 0
+        if offset is not None:
+            label_offset = offset(utt)*100
 
         mu = []
         for t in data_ref:
@@ -56,13 +72,14 @@ def align(T_ref, T_new, labels, clusters):
 
         for t in data_new:
             cluster, start, stop, _, _ = t
-            idx = clusters.index(cluster)
-            counts_clusters[idx] += 1
-            x = start + 0.5*(stop-start)
-            closest_label = ((x-mu)**2).argmin()
-            i = clusters.index(cluster)
-            j = labels.index(data_ref[closest_label][0])
-            counts[i,j] += 1
+            if not ignore_sil or cluster != 'sil':
+                idx = clusters.index(cluster)
+                counts_clusters[idx] += 1
+                x = start + 0.5*(stop-start) + label_offset
+                closest_label = ((x-mu)**2).argmin()
+                i = clusters.index(cluster)
+                j = labels.index(data_ref[closest_label][0])
+                counts[i,j] += 1
 
     return counts, counts_labels, counts_clusters
 
@@ -70,6 +87,10 @@ def main():
     # Command line parsing.
     #-----------------------------------------------------------------------
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--ignore_sil', action='store_true',
+                        help='ignore "sil" tokens in proposed MLF')
+    parser.add_argument('-s', '--segments_file',
+                        help='Segments file with timing offset information for result mlf')
     parser.add_argument('ref_mlf', help='reference MLF')
     parser.add_argument('new_mlf', help='proposed MLF')
     args = parser.parse_args()
@@ -79,14 +100,22 @@ def main():
     T_ref = readMlf(args.ref_mlf)
     T_new = readMlf(args.new_mlf)
 
+    # parse offset file
+    #-----------------------------------------------------------------------
+    offset = None
+    if args.segments_file is not None:
+        offset = OffsetFromSegmentFile(args.segments_file)
+
     # Extract the reference and cluster labels.
     #-----------------------------------------------------------------------
-    labels, clusters = get_labels_clusters(T_ref, T_new)
+    labels, clusters = get_labels_clusters(T_ref, T_new, args.ignore_sil)
     
     # Map each cluster in the new transcription to the closest (in time)
     # reference label.
     #-----------------------------------------------------------------------
-    counts, counts_labels, counts_clusters = align(T_ref, T_new, labels, clusters)
+    counts, counts_labels, counts_clusters = align(T_ref, T_new, labels,
+                                                   clusters, offset,
+                                                   args.ignore_sil)
     print('# counts:', counts.sum())
 
     # Estimate the conditional distribution of the reference label given the 

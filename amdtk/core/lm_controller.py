@@ -3,7 +3,6 @@
 
 import numpy as np
 import string
-import pywrapfst as fst
 from ..models.hpyp import EMPTY_CONTEXT
 from ..models.hpyp import VOCAB_START
 from ..models.hierarchical_language_model import SPECIAL_VOCAB
@@ -360,6 +359,9 @@ def samplePathFromFst(fst_lattice, id2label):
         Sequence of (human readable) labels.
 
     """
+    # Make the import here only as some people may not have openfst installed.
+    import pywrapfst as fst
+
     # Transform fst_lattice into a stochastic FST.
     stoc_fst_lattice = fst.push(fst_lattice, push_weights=True,
                                 remove_total_weight=True)

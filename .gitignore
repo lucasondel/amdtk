@@ -16,3 +16,8 @@
 /recipes/wsj_no_punc/utils
 /recipes/zerocost/path.sh
 /recipes/zerocost/utils
+/recipes/xitsonga/*
+!/recipes/xitsonga/conf
+!/recipes/xitsonga/local
+!/recipes/xitsonga/run.sh
+!/recipes/xitsonga/setup.sh

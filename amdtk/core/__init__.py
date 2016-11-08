@@ -1,4 +1,4 @@
-
+from .internal_io import readCTM
 from .internal_io import readHtk
 from .internal_io import writeHtk
 from .internal_io import readHtkLabels
