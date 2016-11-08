@@ -114,6 +114,8 @@ post_parallel_opts="-t 20m"
 ############################################################################
 # Lattices and counts generation.                                          #
 ############################################################################
+latt_keys=$root/data/va.keys
+
 beam_thresh=250.0
 penalty=0
 gscale=1
