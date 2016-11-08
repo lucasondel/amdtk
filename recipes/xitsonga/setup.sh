@@ -27,7 +27,7 @@ root=$(pwd -P)
 #   * openccs.
 export AMDTK_PARALLEL_ENV="local"
 
-parallel_n_core=1
+parallel_n_core=32
 parallel_profile="--profile $root/path.sh"
 
 ## SGE - BUT ## 
@@ -39,7 +39,7 @@ parallel_profile="--profile $root/path.sh"
 ############################################################################
 # Features settings.                                                       #
 ############################################################################
-scp=${root}/data/all.scp
+scp=${root}/data/va.scp
 fea_ext='fea'
 fea_type=mfcc
 fea_dir=$root/$fea_type
@@ -57,7 +57,7 @@ fea_parallel_opts="-t 1m"
 ############################################################################
 # Model settings.                                                          #
 ############################################################################
-sil_ngauss=10
+sil_ngauss=0
 concentration=1
 truncation=100
 nstates=3
@@ -72,7 +72,7 @@ unigram_ac_weight=1.0
 ############################################################################
 # Training settings.                                                       #
 ############################################################################
-train_keys=$root/data/sil_va.keys
+train_keys=$root/data/va.keys
 
 ## SGE - BUT ## 
 #train_parallel_opts="-q $queues -l scratch1=0.2,matylda5=0.3"
