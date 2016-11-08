@@ -118,30 +118,34 @@ echo done
 #     echo done
 # ) &
 
-# (
-#     echo "($((++n))) Generating hmm state posteriors in htk format..."
-#     utils/phone_loop_post.sh $setup $root/$model_type/unigram \
-#         $root/$model_type/unigram_posts_va || exit 1
-#     echo done
-# 
-#     echo "($((++n))) Generating lattices..."
-#     utils/create_lattices_db.sh $setup $root/$model_type/unigram_posts_va \
-#         $root/$model_type/unigram_lattices_va || exit 1
-#     echo done
-# 
-#     echo "($((++n))) Scoring the unigram model..."
-#     mkdir -p $root/$model_type/unigram_lattices_va_nmi || exit 1
-#     amdtk_concat --htk --keyfile data/eval.keys \
-#         --directory $root/$model_type/unigram_lattices_va \
-#         --fname_format '{0}_timed.lab' \
-#         $root/$model_type/unigram_lattices_va_nmi/unigram.mlf || exit 1
-#     sed -i 's/_timed.lab/.lab/g' \
-#         $root/$model_type/unigram_lattices_va_nmi/unigram.mlf || exit 1
-#     amdtk_score_labels -s data/xitsonga.split data/xitsonga_phn.mlf \
-#         $root/$model_type/unigram_lattices_va_nmi/unigram.mlf \
-#         > $root/$model_type/unigram_lattices_va_nmi/scores || exit 1
-#     echo done
-# ) &
+(
+    echo "===================================================="
+    echo "($((++n))) Generating lattices..."
+    echo "===================================================="
+    utils/create_lattices_db.sh \
+        $setup \
+        "$latt_parallel_opts" \
+        $latt_keys \
+        $root/$model_type/unigram \
+        $root/$model_type/unigram_lattices
+    echo done
+
+    echo "===================================================="
+    echo "($((++n))) Scoring the unigram model..."
+    echo "===================================================="
+    mkdir -p $root/$model_type/unigram_lattices_nmi
+    amdtk_concat \
+        --htk \
+        --keyfile data/eval.keys \
+        --directory $root/$model_type/unigram_lattices \
+        $root/$model_type/unigram_lattices_nmi/zerogram.mlf
+    amdtk_score_labels \
+        -s data/xitsonga.split \
+        data/xitsonga_phn.mlf \
+        $root/$model_type/unigram_lattices_nmi/zerogram.mlf \
+        > $root/$model_type/unigram_lattices_nmi/scores
+    echo done
+) &
 
 echo "===================================================="
 echo "($((++n))) Training the model with bigram LM..."
