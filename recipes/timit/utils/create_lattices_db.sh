@@ -35,6 +35,7 @@ if [ ! -e "$out_dir/.done" ]; then
         $parallel_profile \
         --ntasks "$parallel_n_core" \
         --options "$parallel_opts" \
+        --python_script \
         "pl-post"  \
         "$keys" \
         "amdtk_ploop_post --htk_trick --hmm_states \

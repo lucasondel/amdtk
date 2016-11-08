@@ -25,6 +25,7 @@ if [ ! -e "$out_dir"/.done ]; then
     amdtk_run $parallel_profile \
         --ntasks "$parallel_n_core" \
         --options "$post_parallel_opts" \
+        --python_script \
         "pl-post"  \
         "$post_keys" \
         "amdtk_ploop_post --htk_trick --hmm_states $model $fea_dir/\${ITEM1}.${fea_ext} \

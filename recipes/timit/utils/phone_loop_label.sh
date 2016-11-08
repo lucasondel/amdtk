@@ -25,6 +25,7 @@ if [ ! -e "$label_dir/.done" ]; then
     amdtk_run $parallel_profile \
         --ntasks "$parallel_n_core" \
         --options "$parallel_opts" \
+        --python_script \
         "pl-label" \
         "$keys" \
         "amdtk_ploop_label $model $fea_dir/\${ITEM1}.${fea_ext} \

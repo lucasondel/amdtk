@@ -25,13 +25,30 @@ def main():
     parser.add_argument('--add_dirname', type=int, default=0,
                         help='add the name of the %(metavar)s first '
                         'directories to the key in the MLF', metavar='N')
+    parser.add_argument('--keyfile', '-k', type=str, default=None,
+                        help='the key file to use (instead of, or in addition to '
+                        'specifying the MLFs as arguments)')
+    parser.add_argument('--directory', '-d', type=str, default=os.getcwd(),
+                        help='the directory with the MLF files with names given by '
+                        'the key file')
+    parser.add_argument('--fname_format', '-F', type=str, default='{0}.lab',
+                        help='the formating string for the filename ({0} is the key)')
     parser.add_argument('mlfs', nargs='*', help='the MLF files to concatenate')
     parser.add_argument('output', help='new MLF file')
     args = parser.parse_args()
 
+    mlfs = args.mlfs
+
+    if args.keyfile is not None:
+        with open(args.keyfile, 'r') as keyfile:
+            for key in keyfile:
+                key = key.rstrip('\n')
+                mlfs.append(os.path.join(args.directory, args.fname_format.format(key)))
+
+
     with open(args.output, 'w') as out:
         print('#!MLF!#', file=out)
-        for path in args.mlfs:
+        for path in mlfs:
             if args.timit or args.htk:
                 dirs = []
                 key = path
@@ -42,16 +59,19 @@ def main():
                     key = dirname
                 utt_name = ''
                 for d in reversed(dirs):
-                    utt_name += d + '_'
+                    utt_name += d+'_'
                 utt_name += os.path.basename(path)
-                if args.timit:
-                    entries = readTimitLabels(path, args.sampling_period)
-                    writeMlf(out, {utt_name: entries}, args.sampling_period,
-                             header=False)
-                elif args.htk:
-                    entries = readHtkLabels(path, args.sampling_period)
-                    writeMlf(out, {utt_name: entries}, args.sampling_period,
-                             header=False)
+                try:
+                    if args.timit:
+                        entries = readTimitLabels(path, args.sampling_period)
+                        writeMlf(out, {utt_name: entries}, args.sampling_period,
+                                  header=False)
+                    elif args.htk:
+                        entries = readHtkLabels(path, args.sampling_period)
+                        writeMlf(out, {utt_name: entries}, args.sampling_period,
+                                  header=False)
+                except FileNotFoundError:
+                    print('missing utterance:', key)
             else:
                 with open(path, 'r') as f:
                     lines = f.readlines()

@@ -8,7 +8,7 @@ import amdtk
 from numpy import sqrt, log
 
 
-def main():
+def main(script_args=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--hmm_states', action='store_true',
                         help='output the hmm states posteriors')
@@ -17,7 +17,7 @@ def main():
     parser.add_argument('model', help='model to fit on the data')
     parser.add_argument('feats', help='features of the utterance')
     parser.add_argument('out', help='HTK binary file')
-    args = parser.parse_args()
+    args = parser.parse_args(script_args)
 
     # Load the unit-loop model.
     with open(args.model, 'rb') as f:
@@ -38,5 +38,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-else:
-    raise ImportError('this script cannot be imported')
