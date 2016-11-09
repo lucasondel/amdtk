@@ -12,6 +12,12 @@
 /recipes/timit/path.sh
 /recipes/wsj/path.sh
 /recipes/wsj/utils
+/recipes/wsj/data/.done
+/recipes/wsj/data/score.ref
+/recipes/wsj/mfcc/
+/recipes/wsj/ploop_mfcc_c1_T100_sil0_s3_g2_a3_b3/
+/recipes/wsj/run.sh
+/recipes/wsj/setup.sh
 /recipes/wsj_no_punc/path.sh
 /recipes/wsj_no_punc/utils
 /recipes/zerocost/path.sh
