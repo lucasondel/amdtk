@@ -19,6 +19,8 @@ def main():
                        'format')
     group.add_argument('--htk', action='store_true',
                        help='the files to concatenate are in HTK label format')
+    group.add_argument('--mlf', action='store_true',
+                       help='the files to concatenate are in MLF format')
     parser.add_argument('--sampling_period', type=int, default=100000,
                         help='the sampling period in 100ns used only if '
                         '"timit" or "htk" options are specified')
@@ -65,6 +67,10 @@ def main():
                     if args.timit:
                         entries = readTimitLabels(path, args.sampling_period)
                         writeMlf(out, {utt_name: entries}, args.sampling_period,
+                                  header=False)
+                    if args.mlf:
+                        entries = readMlf(path, args.sampling_period)
+                        writeMlf(out, entries, args.sampling_period,
                                   header=False)
                     elif args.htk:
                         entries = readHtkLabels(path, args.sampling_period)
