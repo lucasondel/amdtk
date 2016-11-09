@@ -5,8 +5,8 @@
 #
 
 
-if [ $# -ne 4 ]; then
-    echo usage: $0 "<setup.sh> <keys> <label_dir> <out_dir>"
+if [ $# -lt 4 -o $# -gt 5 ]; then
+    echo usage: $0 "<setup.sh> <keys> <label_dir> <out_dir> [<label_format>]"
     exit 1
 fi
 
@@ -14,6 +14,10 @@ setup="$1"
 keys="$2"
 label_dir="$3"
 out_dir="$4"
+label_format="$5"
+if [ "$label_format" = "" ]; then
+    label_format="--htk"
+fi
 
 score_lbs="$out_dir/score.lab"
 score_res="$out_dir/scores"
@@ -34,7 +38,7 @@ mkdir -p $out_dir
 if [ ! -e $score_lbs ]; then
     echo "Concatenating AUD labels..."
     lab_files=$(awk -v label_dir="$label_dir" '{ print label_dir "/" $0 ".lab"}' $keys)
-    amdtk_concat --htk $lab_files $score_lbs
+    amdtk_concat $label_format $lab_files $score_lbs
 fi
 
 # perform scoring if not done already
