@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+
+# ==================
+# Convert Kaldi phonetic alignment into MLF 
+# 
+# Author: Leda Sari (lsari2@illinois.edu)
+# 07/27/2016
+#
+# ==================
+
+import argparse
+from sys import exit
+
+def get_id_phone(phones_file):
+	id2ph = {}
+	with open(phones_file, 'r') as f:
+		for line in f:
+			split = line.strip().split()
+			if len(split) < 2:
+				print('Wrong file format. At least two columns are required.')
+				exit(1)
+			ph, ph_id = split[0], split[1]			
+			id2ph[ph_id] = ph
+	print("id2ph[1]", id2ph['1'])
+	return id2ph
+
+def ali_to_mlf(ali_line, timescale=100000, id_2_phd=None):
+	segmentation = []
+	fname = ''
+	ali_line = ali_line.strip() 
+	if len(ali_line) < 1:
+		return '', segmentation
+	fields = ali_line.split(';')
+	# fname, phn, dur = fields[0].strip().split(' ')
+	tbeg = 0
+	#dur  = int(dur)
+	#tend = tbeg + dur*timescale
+	#segmentation.append((tbeg, tend, phn))
+	#tbeg = tend
+	for n in range(len(fields)):
+		if n == 0:
+			fname, phn, dur = fields[0].strip().split(' ')
+		else:
+			phn, dur = fields[n].strip().split(' ')
+		dur = int(dur)
+		tend = tbeg + dur*timescale
+		if id_2_phd is not None:
+			phn = id_2_phd[phn] 
+		# Remove word position tag (B/I/E), if it exists
+		phn_base = phn.split('_')[0]		
+		segmentation.append((tbeg, tend, phn_base))
+		tbeg = tend
+	return fname, segmentation
+
+def write_ali(f, utt, segmentation, extension):
+	f.write('"*/{}.{}"\n'.format(utt, extension))
+	for tb_te_ph in segmentation:
+		f.write(' '.join([str(x) for x in tb_te_ph]) + '\n')
+	f.write('.\n')
+
+def main(args):
+	extension = args.ext
+	id_to_phd = None
+	if args.phones is not None:
+		id_to_phd = get_id_phone(args.phones) 
+	with open(args.ali, 'r') as f:
+		segmentsD = {}
+		for line in f:
+			fname, segm = ali_to_mlf(line, id_2_phd=id_to_phd)
+			segmentsD[fname] = segm
+	with open(args.mlf, 'w') as outf:
+		outf.write('#!MLF!#\n')
+		for fname in sorted(segmentsD.keys()):
+			segments = segmentsD[fname] 	
+			write_ali(outf, fname, segments, extension)
+
+if __name__ == '__main__':
+	parser = argparse.ArgumentParser()
+	parser.add_argument('ali', type=str, help='Alignment file from Kaldi <utt> <ph> <freq> ; ...')
+	parser.add_argument('mlf', type=str, help='Output MLF file')
+	parser.add_argument('--ext', type=str, default='wv1', help='Filename extension (default .wv1)')
+	parser.add_argument('--phones', type=str, default=None, help='File that maps Kaldi phones '
+				'(with word position tags) to ints used in the alignments.')
+	args = parser.parse_args()
+	main(args)	
