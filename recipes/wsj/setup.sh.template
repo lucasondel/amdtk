@@ -9,13 +9,17 @@
 ############################################################################
 # Directories.                                                             #
 ############################################################################
-## BUT ##
-wsj0=/mnt/matylda2/data/WSJ0
-#wsj1=/mnt/matylda2/data/WSJ1
+# ## BUT ##
+# wsj0=/mnt/matylda2/data/WSJ0
+# wsj1=/mnt/matylda2/data/WSJ1
 
-### CLSP ##
-#wsj0=/export/corpora/LDC/LDC93S6A
-#wsj1=/export/corpora/LDC/LDC94S13A
+# ## CLSP ##
+# wsj0=/export/corpora/LDC/LDC93S6A
+# wsj1=/export/corpora/LDC/LDC94S13A
+
+## UPB ##
+wsj0=/scratch/owb/Database/wsj
+wsj1=/scratch/owb/Database/wsj
 
 root=$(pwd -P) 
 
@@ -27,28 +31,32 @@ root=$(pwd -P)
 #   * local
 #   * sge
 #   * openccs.
-export AMDTK_PARALLEL_ENV="local"
+export AMDTK_PARALLEL_ENV="openccs"
 
-parallel_n_core=4
+parallel_n_core=500
 parallel_profile="--profile $root/path.sh"
 
 ## SGE - BUT ##
-queues="all.q@@stable"
+# queues="all.q@@stable"
 
 ## SGE - CLSP ##
 # queues="all.q"
+
+## OPENCCS - UPB ##
+fea_parallel_opts="-t 1m"
+train_parallel_opts="-t 2m"
+label_parallel_opts="-t 1m"
+latt_parallel_opts="-t 1m"
 
 ############################################################################
 # Splitting of the data base (train/dev/test set).                         #
 ############################################################################
 train_keys="$root/data/training_unique.keys"
-test_keys="$root/data/test_unique.keys"
-all_keys="$root/data/all_unique.keys"
 
 ############################################################################
 # Features settings.                                                       #
 ############################################################################
-scp="$root/data/all.scp"
+scp="$root/data/training_unique.scp"
 fea_ext='fea'
 fea_type=mfcc
 fea_dir="$root/$fea_type"
@@ -57,7 +65,7 @@ fea_conf="$root/conf/$fea_type.cfg"
 ############################################################################
 # Model settings.                                                          #
 ############################################################################
-sil_ngauss=10
+sil_ngauss=0
 concentration=1
 truncation=100
 nstates=3
@@ -67,11 +75,16 @@ kappa=5
 a=3
 b=3
 model_type="ploop_${fea_type}_c${concentration}_T${truncation}_sil${sil_ngauss}_s${nstates}_g${ncomponents}_a${a}_b${b}"
+unigram_ac_weight=1.0
 
 ############################################################################
 # Language model training.                                                 #
 ############################################################################
 lm_params=".5,1:.5,1"
+lm_train_niter=5
+lm_create_niter=5
+lm_weight=1
+ac_weight=1
 
 ############################################################################
 # Posteriors generation.                                                   #

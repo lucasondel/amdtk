@@ -43,9 +43,18 @@ if [ ! -e ${root}/data/.done ]
     cat data/*.scp | sort | uniq > data/all.scp
     cat data/all.scp | awk 'BEGIN {FS=":"} {print $2}' > data/all.keys
 
-    python local/get_docs_from_prompts.py $wsj0 $wsj1
-
-    cat data/training_unique.keys data/test_unique.keys > data/all_unique.keys
+#     python local/get_docs_from_prompts.py $wsj0 $wsj1
+# 
+#     cat data/training_unique.keys data/test_unique.keys > data/all_unique.keys
+    
+    # Get all wav files for which we have alignments to evaluate NMI
+    cut -d ' ' -f 1 data/training_unique.phonealignment_wordpos.txt \
+        > data/training_unique.keys
+    grep -f data/training_unique.keys data/all.scp > data/training_unique.scp
+    
+    # convert kaldi alignments to mlf for NMI evaluation
+    kaldi_ali_to_mlf data/training_unique.phonealignment_wordpos.txt \
+        data/score.ref
 
     echo $(date) > ${root}/data/.done
 else
