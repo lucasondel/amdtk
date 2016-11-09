@@ -135,7 +135,7 @@ echo done
     echo "===================================================="
     mkdir -p $root/$model_type/unigram_lattices_nmi
     amdtk_concat \
-        --htk \
+        --mlf \
         --keyfile data/eval.keys \
         --directory $root/$model_type/unigram_lattices \
         $root/$model_type/unigram_lattices_nmi/zerogram.mlf
@@ -232,7 +232,7 @@ echo done
     echo "===================================================="
     mkdir -p $root/$model_type/bigram_lattices_nmi
     amdtk_concat \
-        --htk \
+        --mlf \
         --keyfile data/eval.keys \
         --directory $root/$model_type/bigram_lattices \
         $root/$model_type/bigram_lattices_nmi/zerogram.mlf
