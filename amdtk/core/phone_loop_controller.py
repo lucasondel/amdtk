@@ -167,7 +167,8 @@ def phoneLoopPosteriors(model, X, output_states=False):
     # Merge the inner states of the units to output only the units
     # posteriors.
     if not output_states:
-        gmm_E_log_P_Z = gmm_E_log_P_Z.reshape((X.shape[0], model.nunits, -1))
+        gmm_E_log_P_Z = gmm_E_log_P_Z.reshape((X.shape[0],
+                                               len(model.unit_names), -1))
         gmm_E_log_P_Z = gmm_E_log_P_Z.sum(axis=2)
 
     return gmm_E_log_P_Z
