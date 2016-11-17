@@ -1,12 +1,14 @@
 from .core import readCTM
 from .core import readHtk
 from .core import writeHtk
+from .core import writeHtkText
 from .core import readHtkLabels
 from .core import writeHtkLabels
 from .core import readTimitLabels
 from .core import readMlf
 from .core import writeMlf
 from .core import readHtkLattice
+from .core import writeEval2Clusters
 
 from .core import ParallelEnv
 

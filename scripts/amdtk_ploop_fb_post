@@ -6,18 +6,37 @@ algorithm."""
 import argparse
 import pickle
 import amdtk
+from numpy import sqrt, log
+import os
 
 
-def main():
+class OffsetFromSegmentFile:
+    def __init__(self, segments_file):
+        with open(segments_file) as fp:
+            self.segments_offset = dict()
+            for line in fp:
+                file, start, end = line.split()
+                self.segments_offset[file] = float(start)
+
+    def __call__(self, file):
+        return self.segments_offset[os.path.splitext(file)[0]]
+
+
+def main(script_args=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--ac_weight', type=float, default=1.0,
                         help='scaling of the acoustic score')
     parser.add_argument('--hmm_states', action='store_true',
                         help='output the hmm states posteriors')
+    parser.add_argument('--htk_trick', action='store_true',
+                        help='posteriors for HTK lattices')
+    parser.add_argument('--as_text', action='store_true',
+                        help='posteriors in text format')
+    parser.add_argument('--segments_file', help='segments file')
     parser.add_argument('model', help='model to fit on the data')
     parser.add_argument('feats', help='features of the utterance')
     parser.add_argument('out', help='HTK binary file')
-    args = parser.parse_args()
+    args = parser.parse_args(script_args)
 
     # Load the unit-loop model.
     with open(args.model, 'rb') as f:
@@ -31,10 +50,18 @@ def main():
                                                  ac_weight=args.ac_weight,
                                                  output_states=args.hmm_states)
 
-    # Dump the posteriors on the disk.
-    amdtk.writeHtk(args.out, p, infos[1])
+    # Dirty trick to use these posterior with HTK later on.
+    if args.htk_trick:
+        p = sqrt(-2 * log(p.clip(min=1e-10)))
+
+    # Dump posteriors in text or HTK format
+    if args.as_text:
+        offset = 0
+        if args.segments_file is not None:
+            offset = OffsetFromSegmentFile(args.segments_file)(os.path.basename(args.feats))
+        amdtk.writeHtkText(args.out, p, infos[1], offset)
+    else:
+        amdtk.writeHtk(args.out, p, infos[1])
 
 if __name__ == '__main__':
     main()
-else:
-    raise ImportError('this script cannot be imported')
