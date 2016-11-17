@@ -3,7 +3,7 @@
 set -e
 
 # 
-# Acoustic Unit Discovery based on infinite phone-loop model.
+# Acoustic Unit Discovery based on an infinite phone-loop model.
 #
 
 if [ $# -ne 1 ]; then
@@ -69,7 +69,7 @@ echo done
     utils/phone_loop_label.sh \
         $setup \
         "$label_parallel_opts" \
-        $label_keys \
+        $train_keys \
         $root/$model_type/unigram \
         $root/$model_type/unigram_labels
     echo done
@@ -77,46 +77,88 @@ echo done
     echo "===================================================="
     echo "($((++n))) Scoring the unigram model..."
     echo "===================================================="
-    mkdir -p $root/$model_type/unigram_labels_nmi
-    amdtk_concat \
-        --htk \
-        --keyfile data/eval.keys \
-        --directory $root/$model_type/unigram_labels \
-        $root/$model_type/unigram_labels_nmi/unigram.mlf
-    amdtk_score_labels \
-        -s data/xitsonga.split \
-        data/xitsonga_phn.mlf \
-        $root/$model_type/unigram_labels_nmi/unigram.mlf \
-        > $root/$model_type/unigram_labels_nmi/scores
+    utils/score_labels.sh \
+        $setup \
+        $train_keys \
+        $root/$model_type/unigram_labels \
+        $root/$model_type/unigram_labels_nmi \
+        --segments_file data/xitsonga.split
     echo done
 ) &
 
-# (
-#     echo "($((++n))) Generating hmm state posteriors in text format..."
-#     mkdir -p $root/$model_type/unigram_posts_txt || exit 1
-#     cp data/sil_va.keys $root/$model_type/unigram_posts_txt/post.keys || exit 1
-#     utils/phone_loop_post.sh $setup $root/$model_type/unigram \
-#         $root/$model_type/unigram_posts_txt --as_text --hmm_states &
-#     echo done
-# 
-#     echo "($((++n))) Generating unit posteriors in text format..."
-#     mkdir -p $root/$model_type/unigram_unit_posts_txt || exit 1
-#     cp data/sil_va.keys $root/$model_type/unigram_unit_posts_txt/post.keys || exit 1
-#     utils/phone_loop_post.sh $setup $root/$model_type/unigram \
-#         $root/$model_type/unigram_unit_posts_txt --as_text || exit 1
-#     echo done
-#     
-#     wait || exit 1
-# 
-#     echo "($((++n))) Scoring hmm state and unit posteriors..."
-#     mkdir -p $root/$model_type/unigram_eval1 || exit 1
-#     echo $root/$model_type/unigram_posts_txt \
-#         > $root/$model_type/unigram_eval1/list || exit 1
-#     echo $root/$model_type/unigram_unit_posts_txt \
-#         >> $root/$model_type/unigram_eval1/list || exit 1
-#     utils/score_eval1_db.sh $setup $root/$model_type/unigram_eval1 || exit 1
-#     echo done
-# ) &
+(
+    echo "===================================================="
+    echo "($((++n))) Generating gmm state posteriors in text format..."
+    echo "===================================================="
+    utils/phone_loop_post.sh \
+        --as_text \
+        --hmm_states \
+        --segments_file data/xitsonga.split \
+        $setup \
+        "$post_parallel_opts" \
+        $post_keys \
+        $root/$model_type/unigram \
+        $root/$model_type/unigram_gmm_posts_txt &
+    echo done
+
+    echo "===================================================="
+    echo "($((++n))) Generating unit gmm posteriors in text format..."
+    echo "===================================================="
+    utils/phone_loop_post.sh \
+        --as_text \
+        --segments_file data/xitsonga.split \
+        $setup \
+        "$post_parallel_opts" \
+        $post_keys \
+        $root/$model_type/unigram \
+        $root/$model_type/unigram_unit_gmm_posts_txt &
+    echo done
+    
+    echo "===================================================="
+    echo "($((++n))) Generating hmm state posteriors in text format..."
+    echo "===================================================="
+    utils/phone_loop_fb_post.sh \
+        --as_text \
+        --hmm_states \
+        --segments_file data/xitsonga.split \
+        $setup \
+        "$post_parallel_opts" \
+        $post_keys \
+        $root/$model_type/unigram \
+        $root/$model_type/unigram_hmm_posts_txt &
+    echo done
+
+    echo "===================================================="
+    echo "($((++n))) Generating unit hmm posteriors in text format..."
+    echo "===================================================="
+    utils/phone_loop_fb_post.sh \
+        --as_text \
+        --segments_file data/xitsonga.split \
+        $setup \
+        "$post_parallel_opts" \
+        $post_keys \
+        $root/$model_type/unigram \
+        $root/$model_type/unigram_unit_hmm_posts_txt &
+    echo done
+    
+    wait
+
+    echo "===================================================="
+    echo "($((++n))) Scoring hmm state and unit posteriors..."
+    echo "===================================================="
+    mkdir -p $root/$model_type/unigram_eval1
+    (
+      echo $root/$model_type/unigram_gmm_posts_txt
+      echo $root/$model_type/unigram_unit_gmm_posts_txt
+      echo $root/$model_type/unigram_hmm_posts_txt
+      echo $root/$model_type/unigram_unit_hmm_posts_txt
+    ) > $root/$model_type/unigram_eval1/list
+
+    utils/score_eval1_db.sh \
+        $setup \
+        $root/$model_type/unigram_eval1
+    echo done
+) &
 
 (
     echo "===================================================="
@@ -125,7 +167,7 @@ echo done
     utils/create_lattices_db.sh \
         $setup \
         "$latt_parallel_opts" \
-        $latt_keys \
+        $train_keys \
         $root/$model_type/unigram \
         $root/$model_type/unigram_lattices
     echo done
@@ -133,17 +175,13 @@ echo done
     echo "===================================================="
     echo "($((++n))) Scoring the unigram model..."
     echo "===================================================="
-    mkdir -p $root/$model_type/unigram_lattices_nmi
-    amdtk_concat \
+    utils/score_labels.sh \
+        $setup \
+        $train_keys \
+        $root/$model_type/unigram_lattices \
+        $root/$model_type/unigram_lattices_nmi \
         --mlf \
-        --keyfile data/eval.keys \
-        --directory $root/$model_type/unigram_lattices \
-        $root/$model_type/unigram_lattices_nmi/zerogram.mlf
-    amdtk_score_labels \
-        -s data/xitsonga.split \
-        data/xitsonga_phn.mlf \
-        $root/$model_type/unigram_lattices_nmi/zerogram.mlf \
-        > $root/$model_type/unigram_lattices_nmi/scores
+        --segments_file data/xitsonga.split
     echo done
 ) &
 
@@ -166,7 +204,7 @@ echo done
     utils/phone_loop_label.sh \
         $setup \
         "$label_parallel_opts" \
-        $label_keys \
+        $train_keys \
         $root/$model_type/bigram \
         $root/$model_type/bigram_labels
     echo done
@@ -174,46 +212,88 @@ echo done
     echo "===================================================="
     echo "($((++n))) Scoring the bigram model..."
     echo "===================================================="
-    mkdir -p $root/$model_type/bigram_labels_nmi
-    amdtk_concat \
-        --htk \
-        --keyfile data/eval.keys \
-        --directory $root/$model_type/bigram_labels \
-        $root/$model_type/bigram_labels_nmi/bigram.mlf
-    amdtk_score_labels \
-        -s data/xitsonga.split \
-        data/xitsonga_phn.mlf \
-        $root/$model_type/bigram_labels_nmi/bigram.mlf \
-        > $root/$model_type/bigram_labels_nmi/scores
+    utils/score_labels.sh \
+        $setup \
+        $train_keys \
+        $root/$model_type/bigram_labels \
+        $root/$model_type/bigram_labels_nmi \
+        --segments_file data/xitsonga.split
     echo done
 ) &
 
-# (
-#     echo "($((++n))) Generating hmm state posteriors in text format..."
-#     mkdir -p $root/$model_type/bigram_posts_txt || exit 1
-#     cp data/sil_va.keys $root/$model_type/bigram_posts_txt/post.keys || exit 1
-#     utils/phone_loop_post.sh $setup $root/$model_type/bigram \
-#         $root/$model_type/bigram_posts_txt --as_text --hmm_states &
-#     echo done
-# 
-#     echo "($((++n))) Generating unit posteriors in text format..."
-#     mkdir -p $root/$model_type/bigram_unit_posts_txt || exit 1
-#     cp data/sil_va.keys $root/$model_type/bigram_unit_posts_txt/post.keys || exit 1
-#     utils/phone_loop_post.sh $setup $root/$model_type/bigram \
-#         $root/$model_type/bigram_unit_posts_txt --as_text || exit 1
-#     echo done
-#     
-#     wait || exit 1
-# 
-#     echo "($((++n))) Scoring hmm state and unit posteriors..."
-#     mkdir -p $root/$model_type/bigram_eval1 || exit 1
-#     echo $root/$model_type/bigram_posts_txt \
-#         > $root/$model_type/bigram_eval1/list || exit 1
-#     echo $root/$model_type/bigram_unit_posts_txt \
-#         >> $root/$model_type/bigram_eval1/list || exit 1
-#     utils/score_eval1_db.sh $setup $root/$model_type/bigram_eval1 || exit 1
-#     echo done
-# ) &
+(
+    echo "===================================================="
+    echo "($((++n))) Generating gmm state posteriors in text format..."
+    echo "===================================================="
+    utils/phone_loop_post.sh \
+        --as_text \
+        --hmm_states \
+        --segments_file data/xitsonga.split \
+        $setup \
+        "$post_parallel_opts" \
+        $post_keys \
+        $root/$model_type/bigram \
+        $root/$model_type/bigram_gmm_posts_txt &
+    echo done
+
+    echo "===================================================="
+    echo "($((++n))) Generating unit gmm posteriors in text format..."
+    echo "===================================================="
+    utils/phone_loop_post.sh \
+        --as_text \
+        --segments_file data/xitsonga.split \
+        $setup \
+        "$post_parallel_opts" \
+        $post_keys \
+        $root/$model_type/bigram \
+        $root/$model_type/bigram_unit_gmm_posts_txt &
+    echo done
+    
+    echo "===================================================="
+    echo "($((++n))) Generating hmm state posteriors in text format..."
+    echo "===================================================="
+    utils/phone_loop_fb_post.sh \
+        --as_text \
+        --hmm_states \
+        --segments_file data/xitsonga.split \
+        $setup \
+        "$post_parallel_opts" \
+        $post_keys \
+        $root/$model_type/bigram \
+        $root/$model_type/bigram_hmm_posts_txt &
+    echo done
+
+    echo "===================================================="
+    echo "($((++n))) Generating unit hmm posteriors in text format..."
+    echo "===================================================="
+    utils/phone_loop_fb_post.sh \
+        --as_text \
+        --segments_file data/xitsonga.split \
+        $setup \
+        "$post_parallel_opts" \
+        $post_keys \
+        $root/$model_type/bigram \
+        $root/$model_type/bigram_unit_hmm_posts_txt &
+    echo done
+    
+    wait
+
+    echo "===================================================="
+    echo "($((++n))) Scoring hmm state and unit posteriors..."
+    echo "===================================================="
+    mkdir -p $root/$model_type/bigram_eval1
+    (
+      echo $root/$model_type/bigram_gmm_posts_txt
+      echo $root/$model_type/bigram_unit_gmm_posts_txt
+      echo $root/$model_type/bigram_hmm_posts_txt
+      echo $root/$model_type/bigram_unit_hmm_posts_txt
+    ) > $root/$model_type/bigram_eval1/list
+
+    utils/score_eval1_db.sh \
+        $setup \
+        $root/$model_type/bigram_eval1
+    echo done
+) &
 
 echo "===================================================="
 echo "($((++n))) Generating lattices..."
@@ -221,7 +301,7 @@ echo "===================================================="
 utils/create_lattices_db.sh \
     $setup \
     "$latt_parallel_opts" \
-    $latt_keys \
+    $train_keys \
     $root/$model_type/bigram \
     $root/$model_type/bigram_lattices
 echo done
@@ -230,38 +310,43 @@ echo done
     echo "===================================================="
     echo "($((++n))) Scoring the bigram model..."
     echo "===================================================="
-    mkdir -p $root/$model_type/bigram_lattices_nmi
-    amdtk_concat \
+    utils/score_labels.sh \
+        $setup \
+        $train_keys \
+        $root/$model_type/bigram_lattices \
+        $root/$model_type/bigram_lattices_nmi \
         --mlf \
-        --keyfile data/eval.keys \
-        --directory $root/$model_type/bigram_lattices \
-        $root/$model_type/bigram_lattices_nmi/zerogram.mlf
-    amdtk_score_labels \
-        -s data/xitsonga.split \
-        data/xitsonga_phn.mlf \
-        $root/$model_type/bigram_lattices_nmi/zerogram.mlf \
-        > $root/$model_type/bigram_lattices_nmi/scores
+        --segments_file data/xitsonga.split
+    echo done
+) &
+
+echo "===================================================="
+echo "($((++n))) Running LatticeWordSegmentation..."
+echo "===================================================="
+utils/latticewordsegmentation_db.sh \
+    $setup \
+    "$latticewordsegmentation_parallel_opts" \
+    ${root}/${model_type}/bigram_lattices \
+    ${root}/${model_type}/bigram_ws
+echo done
+
+(
+    echo "===================================================="
+    echo "($((++n))) Scoring word segmentation result..."
+    echo "===================================================="
+    mkdir -p ${root}/${model_type}/bigram_ws_eval2
+    find $root/$model_type/bigram_ws/ -type f \
+        -name TimedSentences_Iter_150 \
+        > ${root}/${model_type}/bigram_ws_eval2/score.list
+    utils/score_eval2_db.sh \
+        $setup \
+        "$eval2_parallel_opts" \
+        ${root}/${model_type}/bigram_ws_eval2 \
+        data/xitsonga.split
     echo done
 ) &
 
 exit 0
-
-echo "($((++n))) Running LatticeWordSegmentation..."
-utils/run_latticewordsegmentation_db.sh $setup \
-    ${root}/${model_type}/bigram_lattices_va \
-    ${root}/${model_type}/bigram_ws || exit 1
-echo done
-
-(
-    echo "($((++n))) Scoring word segmentation result..."
-    mkdir -p ${root}/${model_type}/bigram_ws_eval2 || exit 1
-    find $root/$model_type/bigram_ws/Results/ -type f \
-        -name TimedSentences_Iter_150 \
-        > ${root}/${model_type}/bigram_ws_eval2/score.list || exit 1
-    utils/score_eval2_db.sh $setup ${root}/${model_type}/bigram_ws_eval2 \
-        data/xitsonga.split || exit 1
-    echo done
-) &
 
 echo "($((++n))) Converting segmentation result to unit sequence..."
 mkdir -p $root/$model_type/bigram_ws_1best || exit 1

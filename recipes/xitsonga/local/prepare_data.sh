@@ -42,7 +42,7 @@ then
 #     cat data/va.keys data/sil_va.keys > data/all.keys
     
     # convert transcriptions
-    convert_ctm_to_mlf --zerospeech < data/xitsonga.phn > data/xitsonga_phn.mlf
+    convert_ctm_to_mlf --zerospeech < data/xitsonga.phn > data/score.ref
     cut -d ' ' -f 1 data/xitsonga.phn | uniq > data/eval.keys
     
     echo $(date) > ${root}/data/.done
