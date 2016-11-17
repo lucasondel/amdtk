@@ -6,7 +6,8 @@ from amdtk import readCTM
 
 
 class OffsetFromSegmentFile:
-    def __init__(self, segments_file):
+    def __init__(self, segments_file, file_transform):
+        self.file_transform = file_transform
         with open(segments_file) as fp:
             self.segments_offset = dict()
             for line in fp:
@@ -14,7 +15,7 @@ class OffsetFromSegmentFile:
                 self.segments_offset[file] = float(start)
                 
     def __call__(self, file):
-        return self.segments_offset[os.path.splitext(file)[0]]
+        return self.segments_offset[self.file_transform(file)]
 
 
 def safe_open(filename, sys_file, mode):
@@ -47,9 +48,11 @@ def main():
                        help='the file to convert is in LatticeWordSegmentation format')
     args = parser.parse_args()
 
+    file_transform = lambda filename: os.path.splitext(filename)[0]
+
     offset = None
     if args.segments_file is not None:
-        offset = OffsetFromSegmentFile(args.segments_file)
+        offset = OffsetFromSegmentFile(args.segments_file, file_transform)
         
     if args.zerospeech:
         pos = (0, 3, 1, 2)
@@ -57,8 +60,7 @@ def main():
         pos = (1, 2, 3, 4)
 
     with safe_open(args.ctmfile, sys.stdin, 'r') as ctmfile:
-        file_transfrom_ctm = lambda filename: os.path.splitext(filename)[0]
-        ctm = readCTM(ctmfile, file_transfrom=file_transfrom_ctm,
+        ctm = readCTM(ctmfile, file_transform=file_transform,
                       blacklist=('</s>',), pos=pos,
                       offset_from_filename=offset)
 
