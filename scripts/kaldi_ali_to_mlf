@@ -58,6 +58,16 @@ def write_ali(f, utt, segmentation, extension):
 		f.write(' '.join([str(x) for x in tb_te_ph]) + '\n')
 	f.write('.\n')
 
+def write_split(f, utt, segmentation, non_speech_phones, timescale=10000000):
+	start_time = -1
+	end_time = -1
+	for start, end, phone in segmentation:
+		if phone not in non_speech_phones:
+			end_time = end
+			if start_time == -1:
+				start_time = start
+	f.write('{} {} {}\n'.format(utt, start_time/timescale, end_time/timescale))
+
 def main(args):
 	extension = args.ext
 	id_to_phd = None
@@ -73,6 +83,13 @@ def main(args):
 		for fname in sorted(segmentsD.keys()):
 			segments = segmentsD[fname] 	
 			write_ali(outf, fname, segments, extension)
+	if args.split_file:
+		non_speech_phones = args.non_speech_phones.split()
+		with open(args.split_file, 'w') as outf:
+			for fname in sorted(segmentsD.keys()):
+				segments = segmentsD[fname]
+				write_split(outf, fname, segments, 
+				            non_speech_phones)
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
@@ -81,5 +98,9 @@ if __name__ == '__main__':
 	parser.add_argument('--ext', type=str, default='wv1', help='Filename extension (default .wv1)')
 	parser.add_argument('--phones', type=str, default=None, help='File that maps Kaldi phones '
 				'(with word position tags) to ints used in the alignments.')
+	parser.add_argument('--split_file', type=str, default=None, help='Output split file containing '
+				'the speech segments without begin and end non speech segments.')
+	parser.add_argument('--non_speech_phones', type=str, default=None, help='Non speech phones '
+				'list. Separated by whitespaces.')
 	args = parser.parse_args()
-	main(args)	
+	main(args)
