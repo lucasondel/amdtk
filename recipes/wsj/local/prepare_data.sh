@@ -18,6 +18,13 @@ if [ ! -e ${root}/data/.done ]
     
     mkdir -p ${root}/data 
 
+    # convert kaldi alignments to mlf for NMI evaluation
+    kaldi_ali_to_mlf \
+        --split_file data/wsj.split \
+        --non_speech_phones "SIL NSN SPN" \
+        data/training_unique.phonealignment_wordpos.txt \
+        data/score.ref
+
     # SI 84 training set.
     cat $wsj0/11-13.1/wsj0/doc/indices/train/tr_s_wv1.ndx | \
         grep -v ';' | grep -v -i "11_2_1:wsj0/si_tr_s/401"| \
@@ -52,10 +59,6 @@ if [ ! -e ${root}/data/.done ]
         > data/training_unique.keys
     grep -f data/training_unique.keys data/all.scp > data/training_unique.scp
     
-    # convert kaldi alignments to mlf for NMI evaluation
-    kaldi_ali_to_mlf data/training_unique.phonealignment_wordpos.txt \
-        data/score.ref
-
     echo $(date) > ${root}/data/.done
 else
     echo The $db data is already prepared. Skipping.

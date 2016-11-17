@@ -12,6 +12,8 @@
 !/recipes/babel_turkish_clsp
 !/recipes/timit
 !/recipes/wsj
+!/recipes/wsj_segments
 !/recipes/wsj_no_punc
+!/recipes/wsj_segments_no_punc
 !/recipes/zerocost
 !/recipes/xitsonga

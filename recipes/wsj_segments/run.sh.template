@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+
+set -e
+
+# 
+# Acoustic Unit Discovery based on an infinite phone-loop model.
+#
+
+if [ $# -ne 1 ]; then
+    echo "usage: $0 <setup.sh>"
+    exit 1
+fi
+
+setup=$1
+
+source $setup
+
+# Copy setup.sh to the experiment directory so that it can be re-run.
+if [ -e $root/$model_type/setup.sh ]; then
+  diff $setup $root/$model_type/setup.sh >/dev/null \
+    || echo "Warning: $model_type/setup.sh differs; not overwriting" >&2
+else
+  mkdir -p $root/$model_type
+  cp $setup $root/$model_type/setup.sh
+fi
+
+n=0 
+
+echo "===================================================="
+echo "($((++n))) Data preparation..."
+echo "===================================================="
+local/prepare_data.sh \
+    $setup
+echo done
+
+echo "===================================================="
+echo "($((++n))) Features extraction..."
+echo "===================================================="
+utils/extract_features_db.sh \
+    $setup \
+    "$fea_parallel_opts"
+echo done
+
+echo "===================================================="
+echo "($((++n))) Creating the model..."
+echo "===================================================="
+utils/phone_loop_create.sh \
+    $setup \
+    $train_keys \
+    $root/$model_type/initial_model
+echo done
+
+echo "===================================================="
+echo "($((++n))) Training the model with unigram LM..."
+echo "===================================================="
+utils/phone_loop_train.sh \
+    $setup \
+    "$train_parallel_opts" \
+    20 \
+    $train_keys \
+    $root/$model_type/initial_model \
+    $root/$model_type/unigram
+echo done
+
+(
+    echo "===================================================="
+    echo "($((++n))) Labeling the unigram model..."
+    echo "===================================================="
+    utils/phone_loop_label.sh \
+        $setup \
+        "$label_parallel_opts" \
+        $train_keys \
+        $root/$model_type/unigram \
+        $root/$model_type/unigram_labels
+    echo done
+    
+    echo "===================================================="
+    echo "($((++n))) Scoring the unigram model..."
+    echo "===================================================="
+    utils/score_labels.sh \
+        $setup \
+        $train_keys \
+        $root/$model_type/unigram_labels \
+        $root/$model_type/unigram_labels_nmi
+    echo done
+) &
+
+(
+    echo "===================================================="
+    echo "($((++n))) Generating lattices..."
+    echo "===================================================="
+    utils/create_lattices_db.sh \
+        $setup \
+        "$latt_parallel_opts" \
+        $train_keys \
+        $root/$model_type/unigram \
+        $root/$model_type/unigram_lattices
+    echo done
+
+    echo "===================================================="
+    echo "($((++n))) Scoring the unigram model..."
+    echo "===================================================="
+    utils/score_labels.sh \
+        $setup \
+        $train_keys \
+        $root/$model_type/unigram_lattices \
+        $root/$model_type/unigram_lattices_nmi \
+        --mlf
+    echo done
+) &
+
+echo "===================================================="
+echo "($((++n))) Training the model with bigram LM..."
+echo "===================================================="
+utils/phone_loop_bigram_retrain.sh \
+    $setup \
+    "$train_parallel_opts" \
+    10 \
+    $train_keys \
+    $root/$model_type/unigram \
+    $root/$model_type/bigram
+echo done
+
+(
+    echo "===================================================="
+    echo "($((++n))) Labeling the bigram model..."
+    echo "===================================================="
+    utils/phone_loop_label.sh \
+        $setup \
+        "$label_parallel_opts" \
+        $train_keys \
+        $root/$model_type/bigram \
+        $root/$model_type/bigram_labels
+    echo done
+    
+    echo "===================================================="
+    echo "($((++n))) Scoring the bigram model..."
+    echo "===================================================="
+    utils/score_labels.sh \
+        $setup \
+        $train_keys \
+        $root/$model_type/bigram_labels \
+        $root/$model_type/bigram_labels_nmi
+    echo done
+) &
+
+echo "===================================================="
+echo "($((++n))) Generating lattices..."
+echo "===================================================="
+utils/create_lattices_db.sh \
+    $setup \
+    "$latt_parallel_opts" \
+    $train_keys \
+    $root/$model_type/bigram \
+    $root/$model_type/bigram_lattices
+echo done
+
+(
+    echo "===================================================="
+    echo "($((++n))) Scoring the bigram model..."
+    echo "===================================================="
+    utils/score_labels.sh \
+        $setup \
+        $train_keys \
+        $root/$model_type/bigram_lattices \
+        $root/$model_type/bigram_lattices_nmi \
+        --mlf
+    echo done
+) &
+
+echo "===================================================="
+echo "($((++n))) Running LatticeWordSegmentation..."
+echo "===================================================="
+utils/latticewordsegmentation_db.sh \
+    $setup \
+    "$latticewordsegmentation_parallel_opts" \
+    ${root}/${model_type}/bigram_lattices \
+    ${root}/${model_type}/bigram_ws
+echo done

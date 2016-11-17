@@ -47,6 +47,7 @@ fea_parallel_opts="-t 1m"
 train_parallel_opts="-t 2m"
 label_parallel_opts="-t 1m"
 latt_parallel_opts="-t 1m"
+latticewordsegmentation_parallel_opts='-t 24h --res=rset=mem=30G'
 
 ############################################################################
 # Splitting of the data base (train/dev/test set).                         #
@@ -99,3 +100,14 @@ penalty=-1
 gscale=1
 conf_latt_dir="${root}/${model_type}/conf_lattices"
 
+############################################################################
+# Word segmentation                                                        #
+############################################################################
+word_lm_order="1"
+char_lm_order="2 4 6"
+addchar_lm_order="0 2 4 6"
+ws_niter=150
+ws_AMScale="0.2 0.5 0.8"
+ws_PruneFactor=10
+latticewordsegmentation_threads='1'
+latticewordsegmentation_bin='/scratch/owb/Downloads/LatticeWordSegmenation/build/LatticeWordSegmentation'

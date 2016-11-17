@@ -13,7 +13,7 @@ fi
 
 setup=$1
 
-source $setup || exit 1
+source $setup
 
 # Copy setup.sh to the experiment directory so that it can be re-run.
 if [ -e $root/$model_type/setup.sh ]; then
@@ -167,3 +167,13 @@ echo done
         --mlf
     echo done
 ) &
+
+echo "===================================================="
+echo "($((++n))) Running LatticeWordSegmentation..."
+echo "===================================================="
+utils/latticewordsegmentation_db.sh \
+    $setup \
+    "$latticewordsegmentation_parallel_opts" \
+    ${root}/${model_type}/bigram_lattices \
+    ${root}/${model_type}/bigram_ws
+echo done
