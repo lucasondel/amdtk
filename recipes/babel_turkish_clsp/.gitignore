@@ -1,0 +1,10 @@
+/*
+!.gitignore
+!/conf
+!/local
+!/run_scoring.sh
+!/run.sh
+!/run.sh.template
+!/setup_scoring.sh
+!/setup.sh
+!/setup.sh.template

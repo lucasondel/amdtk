@@ -1,0 +1,7 @@
+/*
+!.gitignore
+!/conf
+!/local
+!/RESULTS
+!/run.sh
+!/setup.sh
