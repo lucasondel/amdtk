@@ -5,8 +5,8 @@
 #
 
 
-if [ $# -lt 4 -o $# -gt 5 ]; then
-    echo usage: $0 "<setup.sh> <keys> <label_dir> <out_dir> [<label_format>]"
+if [ $# -lt 4 -o $# -gt 7 ]; then
+    echo usage: $0 "<setup.sh> <keys> <label_dir> <out_dir> [--htk|--timit|--mlf] [--segments_file segmentsfile]"
     exit 1
 fi
 
@@ -14,7 +14,22 @@ setup="$1"
 keys="$2"
 label_dir="$3"
 out_dir="$4"
-label_format="$5"
+
+shift 4
+while [ $# -gt 0 ]
+do
+    case $1 in
+        --htk|--timit|--mlf)
+            label_format="$1"
+            ;;
+        --segments_file)
+            segments_file="$1 $2"
+            shift
+            ;;
+    esac
+    shift
+done
+
 if [ "$label_format" = "" ]; then
     label_format="--htk"
 fi
@@ -43,7 +58,7 @@ fi
 
 # perform scoring if not done already
 if [ ! -e $score_res ]; then
-    amdtk_score_labels $score_ref $score_lbs | tee $score_res
+    amdtk_score_labels $segments_file $score_ref $score_lbs | tee $score_res
 else
     echo "Scoring already performed. Scores:"
     cat $score_res
