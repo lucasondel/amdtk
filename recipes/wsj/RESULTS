@@ -1,0 +1,44 @@
+MFCC:
+  CMN per utterance (all data):
+    unigram_labels:   33.4 %
+    unigram_lattices: 34.2 %
+    bigram_lattices:  34.5 %
+    bigram_labels:    34.9 %
+
+  CMN per utterance (data without beginning and ending non speech segments):
+    unigram_labels:   34.4 %
+    unigram_lattices: 34.5 %
+    bigram_lattices:  34.9 %
+    bigram_labels:    35.0 %
+
+  CMN per utterance:
+  (data without beginning and ending non speech segments, non verbal punctuation)
+    bigram_labels:    33.8 %
+    bigram_lattices:  33.7 %
+    unigram_labels:   33.0 %
+    unigram_lattices: 33.2 %
+
+PLP:
+  MLLT+FMLLR+LDA per speaker:
+  (features trained on MFCC CMN per utterance bigram labels AUDs
+   all data) 
+    unigram_labels:   37.4 %
+    unigram_lattices: 38.1 %
+    bigram_lattices:  38.5 %
+    bigram_labels:    38.6 %
+    
+  MLLT+FMLLR+LDA per speaker:
+  (features trained on MFCC CMN per utterance bigram labels AUDs
+   data without beginning and ending non speech segments)
+    bigram_labels:    39.3 %
+    bigram_lattices:  39.5 %
+    unigram_labels:   39.3 %
+    unigram_lattices: 39.5 %
+
+  MLLT+FMLLR+LDA per speaker:
+  (features trained on MFCC CMN per utterance bigram labels AUDs
+   data without beginning and ending non speech segments, non verbal punctuation)
+    unigram_labels:   38.5 %
+    unigram_lattices: 38.6 %
+    bigram_lattices:  39.2 %
+    bigram_labels:    39.1 %
