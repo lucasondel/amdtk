@@ -1,0 +1,111 @@
+MFCC:
+  CMN per utterance:
+    unigram_labels:   35.4 %
+    unigram_lattices: 35.5 %
+    bigram_lattices:  36.4 %
+    bigram_labels:    36.9 %
+
+PLP:
+  CMN per utterance:
+    unigram_labels:   35.1 %
+    unigram_lattices: 35.3 %
+    bigram_lattices:  36.1 %
+    bigram_labels:    36.5 %
+
+  CMVN per utterance:
+    unigram_labels:   35.2 %
+    unigram_lattices: 35.2 %
+    bigram_lattices:  36.3 %
+    bigram_labels:    36.8 %
+
+  CMVN per speaker:
+    unigram_labels:   37.0 %
+    unigram_lattices: 37.2 %
+    bigram_lattices:  37.9 %
+    bigram_labels:    38.4 %
+
+  VTLN+CMVN per utterance:
+    (features trained on MFCC CMN per utterance bigram labels AUDs) 
+    unigram_labels:   38.3 %
+    unigram_lattices: 38.4 %
+    bigram_lattices:  39.5 %
+    bigram_labels:    39.9 %
+
+  VTLN+CMVN per speaker:
+  (features trained on MFCC CMN per utterance bigram labels AUDs) 
+    unigram_labels:   39.5 %
+    unigram_lattices: 39.6 %
+    bigram_lattices:  40.5 %
+    bigram_labels:    41.1 %
+
+  MLLT+FMLLR+LDA per utterance:
+  (features trained on PLP VTLN+CMVN per utterance bigram labels AUDs
+  from features trained on MFCC CMN per utterance bigram labels AUDs) 
+    unigram_labels:   41.0 %
+    unigram_lattices: 41.0 %
+    bigram_lattices:  42.3 %
+    bigram_labels:    42.7 %
+
+  MLLT+FMLLR+LDA per utterance:
+  (features trained on MFCC CMN per utterance bigram labels AUDs) 
+    unigram_labels:   42.5 %
+    unigram_lattices: 42.6 %
+    bigram_lattices:  43.3 %
+    bigram_labels:    43.7 %
+
+  MLLT+FMLLR+LDA per speaker:
+  (features trained on PLP VTLN+CMVN per speaker bigram labels AUDs
+  from features trained on MFCC CMN per utterance bigram labels AUDs) 
+    unigram_labels:   43.9 %
+    unigram_lattices: 44.0 %
+    bigram_lattices:  45.0 %
+    bigram_labels:    45.3 %
+
+  MLLT+FMLLR+LDA per speaker:
+  (features trained on MFCC CMN per utterance bigram labels AUDs) 
+    unigram_labels:   45.0 %
+    unigram_lattices: 45.0 %
+    bigram_lattices:  46.2 %
+    bigram_labels:    46.5 %
+
+
+
+MFCC:
+  CMN per utterance:
+    bigram_labels: 36.9 %
+
+PLP:
+  CMN per utterance:
+    bigram_labels: 36.5 %
+
+  CMVN per utterance:
+    bigram_labels: 36.8 %
+
+  CMVN per speaker:
+    bigram_labels: 38.4 %
+
+  VTLN+CMVN per utterance:
+  (features trained on MFCC CMN per utterance bigram labels AUDs) 
+    bigram_labels: 39.9 %
+
+  VTLN+CMVN per speaker:
+  (features trained on MFCC CMN per utterance bigram labels AUDs) 
+    bigram_labels: 41.1 %
+
+  MLLT+FMLLR+LDA per utterance:
+  (features trained on PLP VTLN+CMVN per utterance bigram labels AUDs
+  from features trained on MFCC CMN per utterance bigram labels AUDs) 
+    bigram_labels: 42.7 %
+
+  MLLT+FMLLR+LDA per utterance:
+  (features trained on MFCC CMN per utterance bigram labels AUDs)
+    bigram_labels: 43.7 %
+
+  MLLT+FMLLR+LDA per speaker:
+  (features trained on PLP VTLN+CMVN per speaker bigram labels AUDs
+  from features trained on MFCC CMN per utterance bigram labels AUDs) 
+    bigram_labels: 45.3 %
+
+  MLLT+FMLLR+LDA per speaker:
+  (features trained on MFCC CMN per utterance bigram labels AUDs) 
+    bigram_labels: 46.5 %
