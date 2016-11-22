@@ -96,7 +96,7 @@ echo done
         --segments_file data/xitsonga.split \
         $setup \
         "$post_parallel_opts" \
-        $post_keys \
+        $train_keys \
         $root/$model_type/unigram \
         $root/$model_type/unigram_gmm_posts_txt &
     echo done
@@ -109,7 +109,7 @@ echo done
         --segments_file data/xitsonga.split \
         $setup \
         "$post_parallel_opts" \
-        $post_keys \
+        $train_keys \
         $root/$model_type/unigram \
         $root/$model_type/unigram_unit_gmm_posts_txt &
     echo done
@@ -123,7 +123,7 @@ echo done
         --segments_file data/xitsonga.split \
         $setup \
         "$post_parallel_opts" \
-        $post_keys \
+        $train_keys \
         $root/$model_type/unigram \
         $root/$model_type/unigram_hmm_posts_txt &
     echo done
@@ -136,7 +136,7 @@ echo done
         --segments_file data/xitsonga.split \
         $setup \
         "$post_parallel_opts" \
-        $post_keys \
+        $train_keys \
         $root/$model_type/unigram \
         $root/$model_type/unigram_unit_hmm_posts_txt &
     echo done
@@ -231,7 +231,7 @@ echo done
         --segments_file data/xitsonga.split \
         $setup \
         "$post_parallel_opts" \
-        $post_keys \
+        $train_keys \
         $root/$model_type/bigram \
         $root/$model_type/bigram_gmm_posts_txt &
     echo done
@@ -244,7 +244,7 @@ echo done
         --segments_file data/xitsonga.split \
         $setup \
         "$post_parallel_opts" \
-        $post_keys \
+        $train_keys \
         $root/$model_type/bigram \
         $root/$model_type/bigram_unit_gmm_posts_txt &
     echo done
@@ -258,7 +258,7 @@ echo done
         --segments_file data/xitsonga.split \
         $setup \
         "$post_parallel_opts" \
-        $post_keys \
+        $train_keys \
         $root/$model_type/bigram \
         $root/$model_type/bigram_hmm_posts_txt &
     echo done
@@ -271,7 +271,7 @@ echo done
         --segments_file data/xitsonga.split \
         $setup \
         "$post_parallel_opts" \
-        $post_keys \
+        $train_keys \
         $root/$model_type/bigram \
         $root/$model_type/bigram_unit_hmm_posts_txt &
     echo done

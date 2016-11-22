@@ -41,6 +41,7 @@ fea_parallel_opts="-t 1m"
 train_parallel_opts="-t 2m"
 label_parallel_opts="-t 1m"
 latt_parallel_opts="-t 1m"
+post_parallel_opts="-t 1m"
 latticewordsegmentation_parallel_opts='-t 24h --res=rset=mem=15G'
 
 ############################################################################
@@ -53,7 +54,8 @@ train_keys=$root/data/va.keys
 ############################################################################
 scp=${root}/data/va.scp
 fea_ext='fea'
-fea_type=mfcc
+#fea_type=mfcc
+#fea_type=plp_fmllr_lda
 fea_dir="$root/$fea_type"
 fea_conf="$root/conf/$fea_type.cfg"
 

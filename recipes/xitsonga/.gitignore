@@ -2,6 +2,9 @@
 !.gitignore
 !/conf
 !/local
+!/main.sh
 !/RESULTS
 !/run.sh
 !/setup.sh
+!/setup_fmllr.sh
+!/setup_mfcc.sh
