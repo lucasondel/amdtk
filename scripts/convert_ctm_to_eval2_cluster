@@ -42,6 +42,8 @@ def main():
                               'default: stdout'))
     parser.add_argument('-s', '--segments_file',
                         help='Segments file with timing offset information')
+    parser.add_argument('--write_sequence', action='store_true',
+                        help='Add discovered sequence as cluster label')
     args = parser.parse_args()
 
     file_transform = lambda filename: filename.split('.')[0]
@@ -56,7 +58,7 @@ def main():
                       offset_from_filename=offset)
 
     with safe_open(args.outfile, sys.stdout, 'w') as outfile:
-        writeEval2Clusters(ctm, outfile)
+        writeEval2Clusters(ctm, outfile, write_sequence=args.write_sequence)
 
 
 if __name__ == '__main__':

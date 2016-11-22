@@ -1,0 +1,88 @@
+#!/usr/bin/env python
+import operator
+import shutil
+import os
+import argparse
+from amdtk import readMlf
+
+
+def readClasses(class_file):
+    classes = dict()
+    with open(class_file) as fid:
+        for line in fid.readlines():
+            split_line = line.split()
+            if len(split_line) > 2 and split_line[0] == 'Class':
+                current_class = '_'.join(split_line)
+            elif len(split_line) == 3:
+                entry = (split_line[0], round(float(split_line[1])*100), round(float(split_line[2])*100))
+                try:
+                    classes[current_class].append(entry)
+                except KeyError:
+                    classes[current_class] = [entry]
+    return classes
+
+
+def add_overlapping_sequence(mlf, clusters):
+    new_clusters = dict()
+    for cluster, elements in clusters.items():
+        new_clusters[cluster] = []
+        for utterance_id, element_start, element_end in elements:
+            sequence = (unit for unit, unit_start, unit_end, unit_score, unit_aux in mlf[utterance_id] if
+                        unit_start + (unit_end - unit_start)/2 > element_start and 
+                        unit_start + (unit_end - unit_start)/2 < element_end)
+            new_clusters[cluster].append((utterance_id, element_start, element_end, tuple(sequence)))
+    return new_clusters
+
+
+def get_max_overlapping_sequence(clusters, remove_stress):
+    new_clusters = dict()
+    if remove_stress:
+        to_remove = ['0', '1', '2']
+    for cluster, elements in clusters.items():
+        counter = dict()
+        for element, start, end, sequence in elements:
+            if remove_stress:
+                sequence = tuple(unit[:-1] if unit[-1] in to_remove else unit for unit in sequence)
+            try:
+                counter[sequence] += end - start
+            except KeyError:
+                counter[sequence] = end - start
+        new_clusters[cluster] = max(counter.items(), key=operator.itemgetter(1))
+    return new_clusters
+  
+  
+def label_clusters(directory, clusters_max_overlap, sil_labels):
+    sil_dir = os.path.join(directory, 'SIL')
+    os.makedirs(sil_dir, exist_ok=True)
+    for cluster_label, (sequence, sequence_length) in clusters_max_overlap.items():
+        src = os.path.join(directory, cluster_label)
+        if len(sequence) == 0 or len(sequence) == 1 and sequence[0] in sil_labels:
+            dst = os.path.join(directory, 'SIL', '{}_[{}]'.format(cluster_label, '-'.join(sequence)))
+        else:
+            dst = os.path.join(directory, '{}_[{}]'.format(cluster_label, '-'.join(sequence)))
+        try:
+            shutil.move(src, dst)
+        except OSError:
+            pass
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('mlf_path', help='Path to mlf file')
+    parser.add_argument('cluster_file', help='Path to cluster file')
+    parser.add_argument('directory', help='Directory with clustered segments')
+    parser.add_argument('--sil_labels', help='Silence labels, comma seperated list')
+    parser.add_argument('--remove_stress', action='store_true',
+                        help='Remove stress markers 0,1,2 at end of phoneme')
+    args = parser.parse_args()
+  
+    mlf = readMlf(args.mlf_path)
+    sil_labels = args.sil_labels.split(',')
+    clusters = readClasses(args.cluster_file)
+    clusters_overlap = add_overlapping_sequence(mlf, clusters)
+    clusters_max_overlap = get_max_overlapping_sequence(clusters_overlap, args.remove_stress)
+    label_clusters(args.directory, clusters_max_overlap, sil_labels)
+        
+        
+if __name__ == '__main__':
+    main()

@@ -579,12 +579,13 @@ def readCTM(fp, pos=(0, 1, 2, 3), has_duration=False, file_transform=None,
     return ctm
 
 
-def writeEval2Clusters(ctm, fp, file_transform=None):
+def writeEval2Clusters(ctm, fp, file_transform=None, write_sequence=False):
     """  Write cluster file for evaluation with https://github.com/bootphon/tde
 
     :param ctm: ctm file
     :param fp: output file pointer
     :param file_transform: transform function to modify filename
+    :param write_sequence: write out unit sequence for cluster
     """
     clusters = dict()
     for file, sentence in ctm.items():
@@ -597,8 +598,11 @@ def writeEval2Clusters(ctm, fp, file_transform=None):
             else:
                 clusters[word[0]].append((file, ) + word[1:])
 
-    for idx, words in enumerate(clusters.values()):
-        fp.write('Class {}\n'.format(idx))
+    for idx, (sequence, words) in enumerate(clusters.items()):
+        if write_sequence:
+            fp.write('Class {} [{}]\n'.format(idx, sequence))
+        else:
+            fp.write('Class {}\n'.format(idx))
         for word in words:
             fp.write('{} {} {}\n'.format(*word))
 
