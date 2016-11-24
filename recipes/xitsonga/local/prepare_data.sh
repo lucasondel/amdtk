@@ -27,7 +27,6 @@ then
     # xitsonga va data set.
     find $xitsonga_wavs -type f -name *.wav | \
         python local/make_path.py data/xitsonga.split > data/va.scp
-#     sed -i 's/$/_timed/g' data/va.scp
     cat data/va.scp | awk 'BEGIN {FS=":"} {print $2}' \
         > data/va.keys
   
@@ -37,10 +36,6 @@ then
     cat data/sil_va.scp | awk 'BEGIN {FS=":"} {print $2}' \
         > data/sil_va.keys
 
-#     # combine all datsets
-#     cat data/va.scp data/sil_va.scp > data/all.scp
-#     cat data/va.keys data/sil_va.keys > data/all.keys
-    
     # convert transcriptions
     convert_ctm_to_mlf --zerospeech < data/xitsonga.phn > data/score.ref
     cut -d ' ' -f 1 data/xitsonga.phn | uniq > data/eval.keys

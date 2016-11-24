@@ -31,8 +31,8 @@ def extract_segments(clusters_file, wav_list, out_dir, file_type):
                 if file_type == 'NIST_SPHERE':
                     args = ['sph2pipe', '-f', 'wav', '-t', start + ':' + end, wav_file, segment_file]
                 else:
-                    args = ['sox', wav_file,  segment_file, 'trim {} ={}'.format(start, end)]
-                subprocess.call(args)
+                    args = ['sox', wav_file, segment_file, 'trim {} ={}'.format(start, end)]
+                subprocess.call(' '.join(args), shell=True)
 
 
 def move_single_clusters(base_dir):

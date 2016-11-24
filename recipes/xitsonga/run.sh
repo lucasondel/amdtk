@@ -320,128 +320,163 @@ echo done
     echo done
 ) &
 
-echo "===================================================="
-echo "($((++n))) Running LatticeWordSegmentation..."
-echo "===================================================="
-utils/latticewordsegmentation_db.sh \
-    $setup \
-    "$latticewordsegmentation_parallel_opts" \
-    ${root}/${model_type}/bigram_lattices \
-    ${root}/${model_type}/bigram_ws
-echo done
+# Note: change to 'true' if you want to run the word segmentation
+if false; then
 
-(
     echo "===================================================="
-    echo "($((++n))) Scoring word segmentation result..."
+    echo "($((++n))) Running LatticeWordSegmentation..."
     echo "===================================================="
-    mkdir -p ${root}/${model_type}/bigram_ws_eval2
-    find $root/$model_type/bigram_ws/ -type f \
-        -name TimedSentences_Iter_150 \
-        > ${root}/${model_type}/bigram_ws_eval2/score.list
-    utils/score_eval2_db.sh \
+    utils/latticewordsegmentation_db.sh \
         $setup \
-        "$eval2_parallel_opts" \
-        ${root}/${model_type}/bigram_ws_eval2 \
-        data/xitsonga.split
+        "$latticewordsegmentation_parallel_opts" \
+        ${root}/${model_type}/bigram_lattices \
+        ${root}/${model_type}/bigram_ws
     echo done
-) &
 
-exit 0
+    (
+        echo "===================================================="
+        echo "($((++n))) Scoring word segmentation result..."
+        echo "===================================================="
+        mkdir -p ${root}/${model_type}/bigram_ws_eval2
+        find $root/$model_type/bigram_ws/ -type f \
+            -name TimedSentences_Iter_150 \
+            > ${root}/${model_type}/bigram_ws_eval2/score.list
+        utils/score_eval2_db.sh \
+            $setup \
+            "$eval2_parallel_opts" \
+            ${root}/${model_type}/bigram_ws_eval2 \
+            data/xitsonga.split
+        echo done
+    ) &
 
-echo "($((++n))) Converting segmentation result to unit sequence..."
-mkdir -p $root/$model_type/bigram_ws_1best || exit 1
-find $root/$model_type/bigram_ws/Results/ -type f \
-    -name TimedSentences_Iter_150 \
-    > $root/$model_type/bigram_ws_1best/convert.list || exit 1
-utils/convert_segmentations_db.sh $setup \
-    $root/$model_type/bigram_ws_1best || exit 1
+    (
+        echo "===================================================="
+        echo "($((++n))) Extracting segments and labeling clusters..."
+        echo "===================================================="
+        # note: this is only done for one specific setup, you might want to change this
+        segments_ctm=${root}/${model_type}/bigram_ws/6_0.5_10/KnownN_1_UnkN_2/TimedSentences_Iter_150
+        utils/extract_cluster_segments.sh \
+            $setup \
+            $segments_ctm \
+            $scp \
+            $segments_ctm.wavs \
+            --segments_file data/xitsonga.split \
+            --mlf data/score.ref
+        echo done
+    ) &
+
+fi
+
+wait
+
+echo "===================================================="
+echo "($((++n))) Collecting evaluation results to ${root}/${model_type}/results.csv..."
+echo "===================================================="
+utils/collect_stats.py \
+    --nmi \
+    --eval1 \
+    --eval2 \
+    ${root}/${model_type}
 echo done
 
-echo "($((++n))) Retraining with unit sequence..."
-for label_dir in $(find $root/$model_type/bigram_ws_1best -type d \
-                   -name TimedSentences_Iter_*_1best)
-do
-    utils/phone_loop_retrain_1best.sh $setup 10 $root/$model_type/bigram \
-        ${label_dir} ${label_dir}_model &
-done || exit 1
-wait || exit 1
-echo done
-
-(
-    echo "($((++n))) Generating unit posteriors in text format..."
-    for model_dir in $(find $root/$model_type/bigram_ws_1best -type d \
-                      -name TimedSentences_Iter_*_1best_model)
-    do
-        post_txt_dir=$(echo ${model_dir}|sed 's/_model$/_posts_txt/') || exit 1
-        mkdir -p ${post_txt_dir} || exit 1
-        cp data/sil_va.keys ${post_txt_dir}/post.keys || exit 1
-        utils/phone_loop_post.sh $setup ${model_dir} ${post_txt_dir} --as_text &
-    done || exit 1
-    wait || exit 1
-    echo done
-
-    echo "($((++n))) Scoring posteriors in text format..."
-    mkdir -p $root/$model_type/bigram_ws_eval1 || exit 1
-    find $root/$model_type/bigram_ws_1best -type d \
-        -name TimedSentences_Iter_*_posts_txt \
-        > $root/$model_type/bigram_ws_eval1/list || exit 1
-    utils/score_eval1_db.sh $setup $root/$model_type/bigram_ws_eval1 || exit 1
-    echo done
-) &
-
-(
-    echo "($((++n))) Labeling the unigram model..."
-    for model_dir in $(find $root/$model_type/bigram_ws_1best -type d \
-                           -name TimedSentences_Iter_*_1best_model)
-    do
-        utils/phone_loop_label.sh $setup ${model_dir} \
-            $(echo ${model_dir}|sed 's/_model$/_labels/') &
-    done || exit 1
-    wait || exit 1
-    echo done
-
-    echo "($((++n))) Scoring the unigram model..."
-    for label_dir in $(find $root/$model_type/bigram_ws_1best -type d \
-                           -name TimedSentences_Iter_*_1best_labels)
-    do
-        (
-            nmi_dir=$(echo ${label_dir}|sed 's/_labels$/_nmi/') || exit 1
-            mkdir -p ${nmi_dir} || exit 1
-            amdtk_concat --htk --keyfile data/eval.keys --directory ${label_dir} \
-                --fname_format '{0}_timed.lab' ${nmi_dir}/unigram.mlf || exit 1
-            sed -i 's/_timed.lab/.lab/g' ${nmi_dir}/unigram.mlf || exit 1
-            amdtk_score_labels -s data/xitsonga.split data/xitsonga_phn.mlf \
-                ${nmi_dir}/unigram.mlf > ${nmi_dir}/scores || exit 1
-        ) &
-    done || exit 1
-    wait || exit 1
-    echo done
-) &
-
-(
-    echo "($((++n))) Generating hmm state posteriors in htk format, Generating lattices and scoring the unigram model..."
-    for model_dir in $(find $root/$model_type/bigram_ws_1best -type d \
-                          -name TimedSentences_Iter_*_1best_model)
-    do
-      (
-          post_dir=$(echo ${model_dir}|sed 's/_model$/_posts_va/') || exit 1
-          utils/phone_loop_post.sh $setup ${model_dir} \
-              ${post_dir} || exit 1
-
-          lattices_dir=$(echo ${model_dir}|sed 's/_model$/_lattices_va/')
-          utils/create_lattices_db.sh $setup ${post_dir} \
-              ${lattices_dir} || exit 1
-
-          nmi_dir=$(echo ${model_dir}|sed 's/_model$/_va_nmi/') || exit 1
-          mkdir -p ${nmi_dir}
-          amdtk_concat --htk --keyfile data/eval.keys \
-              --directory ${lattices_dir} \
-              --fname_format '{0}_timed.lab' ${nmi_dir}/unigram.mlf || exit 1
-          sed -i 's/_timed.lab/.lab/g' ${nmi_dir}/unigram.mlf || exit 1
-          amdtk_score_labels -s data/xitsonga.split data/xitsonga_phn.mlf \
-              ${nmi_dir}/unigram.mlf > ${nmi_dir}/scores || exit 1
-      ) &
-    done || exit 1
-    wait || exit 1
-    echo done
-) &
+# # This code is meant to be used for retraining with the first best sequence
+# # from the word segmentation. Not implemented yet, since it yielded only minor
+# # improvements. Needs further investigation and bugfixes.
+# 
+# echo "($((++n))) Converting segmentation result to unit sequence..."
+# mkdir -p $root/$model_type/bigram_ws_1best || exit 1
+# find $root/$model_type/bigram_ws/Results/ -type f \
+#     -name TimedSentences_Iter_150 \
+#     > $root/$model_type/bigram_ws_1best/convert.list || exit 1
+# utils/convert_segmentations_db.sh $setup \
+#     $root/$model_type/bigram_ws_1best || exit 1
+# echo done
+# 
+# echo "($((++n))) Retraining with unit sequence..."
+# for label_dir in $(find $root/$model_type/bigram_ws_1best -type d \
+#                    -name TimedSentences_Iter_*_1best)
+# do
+#     utils/phone_loop_retrain_1best.sh $setup 10 $root/$model_type/bigram \
+#         ${label_dir} ${label_dir}_model &
+# done || exit 1
+# wait || exit 1
+# echo done
+# 
+# (
+#     echo "($((++n))) Generating unit posteriors in text format..."
+#     for model_dir in $(find $root/$model_type/bigram_ws_1best -type d \
+#                       -name TimedSentences_Iter_*_1best_model)
+#     do
+#         post_txt_dir=$(echo ${model_dir}|sed 's/_model$/_posts_txt/') || exit 1
+#         mkdir -p ${post_txt_dir} || exit 1
+#         cp data/sil_va.keys ${post_txt_dir}/post.keys || exit 1
+#         utils/phone_loop_post.sh $setup ${model_dir} ${post_txt_dir} --as_text &
+#     done || exit 1
+#     wait || exit 1
+#     echo done
+# 
+#     echo "($((++n))) Scoring posteriors in text format..."
+#     mkdir -p $root/$model_type/bigram_ws_eval1 || exit 1
+#     find $root/$model_type/bigram_ws_1best -type d \
+#         -name TimedSentences_Iter_*_posts_txt \
+#         > $root/$model_type/bigram_ws_eval1/list || exit 1
+#     utils/score_eval1_db.sh $setup $root/$model_type/bigram_ws_eval1 || exit 1
+#     echo done
+# ) &
+# 
+# (
+#     echo "($((++n))) Labeling the unigram model..."
+#     for model_dir in $(find $root/$model_type/bigram_ws_1best -type d \
+#                            -name TimedSentences_Iter_*_1best_model)
+#     do
+#         utils/phone_loop_label.sh $setup ${model_dir} \
+#             $(echo ${model_dir}|sed 's/_model$/_labels/') &
+#     done || exit 1
+#     wait || exit 1
+#     echo done
+# 
+#     echo "($((++n))) Scoring the unigram model..."
+#     for label_dir in $(find $root/$model_type/bigram_ws_1best -type d \
+#                            -name TimedSentences_Iter_*_1best_labels)
+#     do
+#         (
+#             nmi_dir=$(echo ${label_dir}|sed 's/_labels$/_nmi/') || exit 1
+#             mkdir -p ${nmi_dir} || exit 1
+#             amdtk_concat --htk --keyfile data/eval.keys --directory ${label_dir} \
+#                 --fname_format '{0}_timed.lab' ${nmi_dir}/unigram.mlf || exit 1
+#             sed -i 's/_timed.lab/.lab/g' ${nmi_dir}/unigram.mlf || exit 1
+#             amdtk_score_labels -s data/xitsonga.split data/xitsonga_phn.mlf \
+#                 ${nmi_dir}/unigram.mlf > ${nmi_dir}/scores || exit 1
+#         ) &
+#     done || exit 1
+#     wait || exit 1
+#     echo done
+# ) &
+# 
+# (
+#     echo "($((++n))) Generating hmm state posteriors in htk format, Generating lattices and scoring the unigram model..."
+#     for model_dir in $(find $root/$model_type/bigram_ws_1best -type d \
+#                           -name TimedSentences_Iter_*_1best_model)
+#     do
+#       (
+#           post_dir=$(echo ${model_dir}|sed 's/_model$/_posts_va/') || exit 1
+#           utils/phone_loop_post.sh $setup ${model_dir} \
+#               ${post_dir} || exit 1
+# 
+#           lattices_dir=$(echo ${model_dir}|sed 's/_model$/_lattices_va/')
+#           utils/create_lattices_db.sh $setup ${post_dir} \
+#               ${lattices_dir} || exit 1
+# 
+#           nmi_dir=$(echo ${model_dir}|sed 's/_model$/_va_nmi/') || exit 1
+#           mkdir -p ${nmi_dir}
+#           amdtk_concat --htk --keyfile data/eval.keys \
+#               --directory ${lattices_dir} \
+#               --fname_format '{0}_timed.lab' ${nmi_dir}/unigram.mlf || exit 1
+#           sed -i 's/_timed.lab/.lab/g' ${nmi_dir}/unigram.mlf || exit 1
+#           amdtk_score_labels -s data/xitsonga.split data/xitsonga_phn.mlf \
+#               ${nmi_dir}/unigram.mlf > ${nmi_dir}/scores || exit 1
+#       ) &
+#     done || exit 1
+#     wait || exit 1
+#     echo done
+# ) &

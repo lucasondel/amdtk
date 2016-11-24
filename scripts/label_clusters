@@ -77,7 +77,9 @@ def main():
     args = parser.parse_args()
   
     mlf = readMlf(args.mlf_path)
-    sil_labels = args.sil_labels.split(',')
+    sil_labels = []
+    if args.sil_labels is not None:
+        sil_labels = args.sil_labels.split(',')
     clusters = readClasses(args.cluster_file)
     clusters_overlap = add_overlapping_sequence(mlf, clusters)
     clusters_max_overlap = get_max_overlapping_sequence(clusters_overlap, args.remove_stress)
