@@ -81,7 +81,8 @@ echo done
         $setup \
         $train_keys \
         $root/$model_type/unigram_labels \
-        $root/$model_type/unigram_labels_nmi
+        $root/$model_type/unigram_labels_nmi \
+        --segments_file data/wsj.split
     echo done
 ) &
 
@@ -105,7 +106,8 @@ echo done
         $train_keys \
         $root/$model_type/unigram_lattices \
         $root/$model_type/unigram_lattices_nmi \
-        --mlf
+        --mlf \
+        --segments_file data/wsj.split
     echo done
 ) &
 
@@ -140,7 +142,8 @@ echo done
         $setup \
         $train_keys \
         $root/$model_type/bigram_labels \
-        $root/$model_type/bigram_labels_nmi
+        $root/$model_type/bigram_labels_nmi \
+        --segments_file data/wsj.split
     echo done
 ) &
 
@@ -164,7 +167,8 @@ echo done
         $train_keys \
         $root/$model_type/bigram_lattices \
         $root/$model_type/bigram_lattices_nmi \
-        --mlf
+        --mlf \
+        --segments_file data/wsj.split
     echo done
 ) &
 
@@ -176,4 +180,29 @@ utils/latticewordsegmentation_db.sh \
     "$latticewordsegmentation_parallel_opts" \
     ${root}/${model_type}/bigram_lattices \
     ${root}/${model_type}/bigram_ws
+echo done
+
+echo "===================================================="
+echo "($((++n))) Extracting segments and labeling clusters..."
+echo "===================================================="
+# note: this is only done for one specific setup, you might want to change this
+segments_ctm=${root}/${model_type}/bigram_ws/6_0.5_10/KnownN_1_UnkN_2/TimedSentences_Iter_150
+utils/extract_cluster_segments.sh \
+    $setup \
+    $segments_ctm \
+    $scp \
+    $segments_ctm.wavs \
+    --segments_file data/wsj.split \
+    --file_type NIST_SPHERE \
+    --mlf data/score.ref \
+    --sil_labels SIL,NSN,SPN \
+    --remove_stress
+echo done
+
+echo "===================================================="
+echo "($((++n))) Collecting evaluation results to ${root}/${model_type}/results.csv..."
+echo "===================================================="
+utils/collect_stats.py \
+    --nmi \
+    ${root}/${model_type}
 echo done
