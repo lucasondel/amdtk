@@ -332,6 +332,8 @@ if false; then
         ${root}/${model_type}/bigram_lattices \
         ${root}/${model_type}/bigram_ws
     echo done
+    
+    eval2='--eval2'
 
     (
         echo "===================================================="
@@ -375,7 +377,7 @@ echo "===================================================="
 utils/collect_stats.py \
     --nmi \
     --eval1 \
-    --eval2 \
+    ${eval2} \
     ${root}/${model_type}
 echo done
 
