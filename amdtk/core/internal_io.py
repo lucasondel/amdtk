@@ -128,6 +128,19 @@ def writeHtk(path, data, sampPeriod=100000):
         f.write(s)
 
 
+def writeHtkText(path, data, sampPeriod=100000, offset=0):
+    if len(data.shape) > 2:
+        raise ValueError('Cannot write data with more than 2 dimensions.')
+    if len(data.shape) == 1:
+        tmp = data[np.newaxis, :]
+    else:
+        tmp = data
+    nvecs = data.shape[0]
+    dt = sampPeriod/TIME_UNIT
+    tmp = np.hstack((offset + 0.0025 + dt*np.arange(1, nvecs + 1).reshape(nvecs, 1), tmp))
+    np.savetxt(path, tmp, delimiter=' ', fmt='%.6f')
+
+
 def __isStartOrEndField(field):
     return field.isdigit()
 
@@ -497,7 +510,7 @@ def readHtkLattice(lattfile, ac_weight=1., lm_weight=1., gzipped=True):
     return fst_lattice, id2label
     
 
-def readCTM(fp, pos=(0, 1, 2, 3), has_duration=False, file_transfrom=None,
+def readCTM(fp, pos=(0, 1, 2, 3), has_duration=False, file_transform=None,
              blacklist=(), add_bool=False, offset_from_filename=None,
              file_segments=None):
     """ read a ctm file
@@ -505,7 +518,7 @@ def readCTM(fp, pos=(0, 1, 2, 3), has_duration=False, file_transfrom=None,
     :param fp: file pointer to read ctm file to from
     :param pos: 4 element tuple with positions of (filename, word, start, end)
     :param has_duration: ctm uses duration instead of end time
-    :param file_transfrom: transform function to modify filename
+    :param file_transform: transform function to modify filename
     :param blacklist: blacklist of words to skip when reading
     :param add_bool: add boolen to ctm transcription
     :param offset_from_filename: function to derive time offset from filename
@@ -535,8 +548,8 @@ def readCTM(fp, pos=(0, 1, 2, 3), has_duration=False, file_transfrom=None,
             start += offset
             end += offset
 
-        if file_transfrom is not None:
-            filename = file_transfrom(filename)
+        if file_transform is not None:
+            filename = file_transform(filename)
 
         if word not in blacklist:
             if add_bool:
@@ -564,3 +577,33 @@ def readCTM(fp, pos=(0, 1, 2, 3), has_duration=False, file_transfrom=None,
         return segments_ctm
 
     return ctm
+
+
+def writeEval2Clusters(ctm, fp, file_transform=None, write_sequence=False):
+    """  Write cluster file for evaluation with https://github.com/bootphon/tde
+
+    :param ctm: ctm file
+    :param fp: output file pointer
+    :param file_transform: transform function to modify filename
+    :param write_sequence: write out unit sequence for cluster
+    """
+    clusters = dict()
+    for file, sentence in ctm.items():
+        for word in sentence:
+            if word[0] not in clusters:
+                clusters[word[0]] = list()
+
+            if file_transform is not None:
+                clusters[word[0]].append((file_transform(file), ) + word[1:])
+            else:
+                clusters[word[0]].append((file, ) + word[1:])
+
+    for idx, (sequence, words) in enumerate(clusters.items()):
+        if write_sequence:
+            fp.write('Class {} [{}]\n'.format(idx, sequence))
+        else:
+            fp.write('Class {}\n'.format(idx))
+        for word in words:
+            fp.write('{} {} {}\n'.format(*word))
+
+        fp.write('\n')

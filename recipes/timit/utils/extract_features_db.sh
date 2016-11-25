@@ -15,20 +15,23 @@ out_dir="$3"
 source "$setup" || exit 1
 
 if [ ! -e "$fea_dir/.done" ]; then
+    if [ ! -z $fea_dir_ext ]; then
+        ln -sf $fea_dir_ext $fea_dir
+    else
+        # Create the output directory.
+        mkdir -p "$fea_dir"
 
-    # Create the output directory.
-    mkdir -p "$fea_dir"
+        # Extract the features
+        amdtk_run $parallel_profile \
+            --ntasks "$parallel_n_core" \
+            --options "$parallel_opts" \
+            "extract-features" \
+            "$scp" \
+            "$PWD/utils/extract_features.sh $setup \$ITEM1 \$ITEM2" \
+            "$fea_dir" || exit 1
 
-    # Extract the features
-    amdtk_run $parallel_profile \
-        --ntasks "$parallel_n_core" \
-        --options "$parallel_opts" \
-        "extract-features" \
-        "$scp" \
-        "$PWD/utils/extract_features.sh $setup \$ITEM1 \$ITEM2" \
-        "$fea_dir" || exit 1
-
-    date > "$fea_dir"/.done
+        date > "$fea_dir"/.done
+    fi
 else
     echo The features have already been extracted. Skipping.
 fi

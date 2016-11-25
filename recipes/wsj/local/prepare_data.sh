@@ -18,6 +18,13 @@ if [ ! -e ${root}/data/.done ]
     
     mkdir -p ${root}/data 
 
+    # convert kaldi alignments to mlf for NMI evaluation
+    kaldi_ali_to_mlf \
+        --split_file data/wsj.split \
+        --non_speech_phones "SIL NSN SPN" \
+        data/training_unique.phonealignment_wordpos.txt \
+        data/score.ref
+
     # SI 84 training set.
     cat $wsj0/11-13.1/wsj0/doc/indices/train/tr_s_wv1.ndx | \
         grep -v ';' | grep -v -i "11_2_1:wsj0/si_tr_s/401"| \
@@ -43,10 +50,15 @@ if [ ! -e ${root}/data/.done ]
     cat data/*.scp | sort | uniq > data/all.scp
     cat data/all.scp | awk 'BEGIN {FS=":"} {print $2}' > data/all.keys
 
-    python local/get_docs_from_prompts.py $wsj0 $wsj1
-
-    cat data/training_unique.keys data/test_unique.keys > data/all_unique.keys
-
+#     python local/get_docs_from_prompts.py $wsj0 $wsj1
+# 
+#     cat data/training_unique.keys data/test_unique.keys > data/all_unique.keys
+    
+    # Get all wav files for which we have alignments to evaluate NMI
+    cut -d ' ' -f 1 data/training_unique.phonealignment_wordpos.txt \
+        > data/training_unique.keys
+    grep -f data/training_unique.keys data/all.scp > data/training_unique.scp
+    
     echo $(date) > ${root}/data/.done
 else
     echo The $db data is already prepared. Skipping.

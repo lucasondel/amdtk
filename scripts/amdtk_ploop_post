@@ -6,6 +6,19 @@ import argparse
 import pickle
 import amdtk
 from numpy import sqrt, log
+import os
+
+
+class OffsetFromSegmentFile:
+    def __init__(self, segments_file):
+        with open(segments_file) as fp:
+            self.segments_offset = dict()
+            for line in fp:
+                file, start, end = line.split()
+                self.segments_offset[file] = float(start)
+
+    def __call__(self, file):
+        return self.segments_offset[os.path.splitext(file)[0]]
 
 
 def main(script_args=None):
@@ -14,6 +27,9 @@ def main(script_args=None):
                         help='output the hmm states posteriors')
     parser.add_argument('--htk_trick', action='store_true',
                         help='posteriors for HTK lattices')
+    parser.add_argument('--as_text', action='store_true',
+                        help='posteriors in text format')
+    parser.add_argument('--segments_file', help='segments file')
     parser.add_argument('model', help='model to fit on the data')
     parser.add_argument('feats', help='features of the utterance')
     parser.add_argument('out', help='HTK binary file')
@@ -33,8 +49,14 @@ def main(script_args=None):
     if args.htk_trick:
         p = sqrt(-2 * log(p.clip(min=1e-10)))
 
-    # Dump the posteriors on the disk.
-    amdtk.writeHtk(args.out, p, infos[1])
+    # Dump posteriors in text or HTK format
+    if args.as_text:
+        offset = 0
+        if args.segments_file is not None:
+            offset = OffsetFromSegmentFile(args.segments_file)(os.path.basename(args.feats))
+        amdtk.writeHtkText(args.out, p, infos[1], offset)
+    else:
+        amdtk.writeHtk(args.out, p, infos[1])
 
 if __name__ == '__main__':
     main()

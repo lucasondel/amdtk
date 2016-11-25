@@ -1,12 +1,14 @@
 from .internal_io import readCTM
 from .internal_io import readHtk
 from .internal_io import writeHtk
+from .internal_io import writeHtkText
 from .internal_io import readHtkLabels
 from .internal_io import writeHtkLabels
 from .internal_io import readTimitLabels
 from .internal_io import readMlf
 from .internal_io import writeMlf
 from .internal_io import readHtkLattice
+from .internal_io import writeEval2Clusters
 
 from .parallel import ParallelEnv
 

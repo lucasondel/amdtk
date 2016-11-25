@@ -1,8 +1,8 @@
 #
-# This file defines all the configuration variables for a particular 
-# experiment. Set the different paths according to your system. Most of the 
+# This file defines all the configuration variables for a particular
+# experiment. Set the different paths according to your system. Most of the
 # values predefined here are generic and should yield decent results.
-# However, they are most likely not optimal and need to be tuned for each 
+# However, they are most likely not optimal and need to be tuned for each
 # particular data set.
 #
 
@@ -10,7 +10,7 @@
 # Directories.                                                             #
 ############################################################################
 ## UPB ##
-xitsonga_base=/net/nas/walter/Database/ZeroSpeech2015/xitsonga
+xitsonga_base=/scratch/owb/Database/ZeroSpeech2015/xitsonga
 xitsonga_wavs=${xitsonga_base}/xitsonga_wavs
 xitsonga_eval1=${xitsonga_base}/xitsonga_eval1
 xitsonga_eval2=${xitsonga_base}/xitsonga_eval2
@@ -25,34 +25,39 @@ root=$(pwd -P)
 #   * local
 #   * sge
 #   * openccs.
-export AMDTK_PARALLEL_ENV="local"
+export AMDTK_PARALLEL_ENV="openccs"
 
-parallel_n_core=32
+parallel_n_core=500
 parallel_profile="--profile $root/path.sh"
 
-## SGE - BUT ## 
-#queues="all.q@@stable"
+## SGE - BUT ##
+# queues="all.q@@stable"
 
-## SGE - CLSP ## 
-#queues="all.q"
+## SGE - CLSP ##
+# queues="all.q"
+
+## OPENCCS - UPB ##
+fea_parallel_opts="-t 1m"
+train_parallel_opts="-t 2m"
+label_parallel_opts="-t 1m"
+latt_parallel_opts="-t 1m"
+post_parallel_opts="-t 1m"
+latticewordsegmentation_parallel_opts='-t 24h --res=rset=mem=15G'
+
+############################################################################
+# Splitting of the data base (train/dev/test set).                         #
+############################################################################
+train_keys=$root/data/va.keys
 
 ############################################################################
 # Features settings.                                                       #
 ############################################################################
 scp=${root}/data/va.scp
 fea_ext='fea'
-fea_type=mfcc
-fea_dir=$root/$fea_type
-fea_conf=$root/conf/$fea_type.cfg
-
-## SGE - BUT ##
-#fea_parallel_opts="-q $queues -l scratch1=0.3"
-
-## SGE - CLSP ##
-#fea_parallel_opts="-q $queues -l arch=*64"
-
-## OpenCCS - UPB ##
-fea_parallel_opts="-t 1m"
+#fea_type=mfcc
+#fea_type=plp_fmllr_lda
+fea_dir="$root/$fea_type"
+fea_conf="$root/conf/$fea_type.cfg"
 
 ############################################################################
 # Model settings.                                                          #
@@ -70,46 +75,18 @@ model_type="ploop_${fea_type}_c${concentration}_T${truncation}_sil${sil_ngauss}_
 unigram_ac_weight=1.0
 
 ############################################################################
-# Training settings.                                                       #
+# Language model training.                                                 #
 ############################################################################
-train_keys=$root/data/va.keys
-
-## SGE - BUT ## 
-#train_parallel_opts="-q $queues -l scratch1=0.2,matylda5=0.3"
-
-## SGE - CLSP ## 
-#train_parallel_opts="-q $queues -l arch=*64"
-
-## OpenCCS - UPB ##
-train_parallel_opts="-t 40m"
+lm_params=".5,1:.5,1"
+lm_train_niter=5
+lm_create_niter=5
+lm_weight=1
+ac_weight=1
 
 ############################################################################
-# Labeling settings.                                                       #
+# Posteriors generation.                                                   #
 ############################################################################
-label_keys=$root/data/va.keys
-
-## SGE - BUT ## 
-#label_parallel_opts="-q $queues -l matylda5=0.3"
-
-## SGE - CLSP ## 
-#label_parallel_opts="-q $queues -l arch=*64"
-
-## OpenCCS - UPB ##
-label_parallel_opts="-t 30m"
-
-############################################################################
-# Posteriors settings.                                                     #
-############################################################################
-post_keys=$root/data/va.keys
-
-## SGE - BUT ## 
-#post_parallel_opts="-q $queues -l matylda5=0.3"
-
-## SGE - BUT ## 
-#post_parallel_opts="-q $queues -l arch=*64"
-
-## OpenCCS - UPB ##
-post_parallel_opts="-t 20m"
+post_ac_weight=1
 
 ############################################################################
 # Lattices and counts generation.                                          #
@@ -119,19 +96,7 @@ latt_keys=$root/data/va.keys
 beam_thresh=250.0
 penalty=0
 gscale=1
-latt_count_order=3
-sfx=bt${beam_thresh}_p${penalty}_gs${gscale}
-conf_latt_dir=${root}/${model_type}/conf_lattices
-out_latt_dir=${root}/${model_type}/lattices_${sfx}_${niter}
-
-## SGE - BUT ## 
-#latt_parallel_opts="-q $queues -l matylda5=0.3"
-
-## SGE - BUT ## 
-#latt_parallel_opts="-q $queues -l arch=*64"
-
-## OpenCCS - UPB ##
-latt_parallel_opts="-t 15m"
+conf_latt_dir="${root}/${model_type}/conf_lattices"
 
 ############################################################################
 # Word segmentation                                                        #
@@ -144,7 +109,6 @@ ws_AMScale="0.2 0.5 0.8"
 ws_PruneFactor=10
 latticewordsegmentation_threads='1'
 latticewordsegmentation_bin='/scratch/owb/Downloads/LatticeWordSegmenation/build/LatticeWordSegmentation'
-latticewordsegmentation_parallel_opts='-t 24h --res=rset=mem=15G'
 
 ############################################################################
 # evaluation1 setup                                                        #
@@ -162,12 +126,3 @@ eval2_tool="${xitsonga_eval2}/xitsonga_eval2 -v -j 4"
 # retrainin setup                                                         #
 ############################################################################
 convert_segmentation_parallel_opts='-t 5m'
-
-############################################################################
-# Language model training.                                                 #
-############################################################################
-lm_params=".5,1:.5,1"
-lm_train_niter=5
-lm_create_niter=5
-lm_weight=1
-ac_weight=1

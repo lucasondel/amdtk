@@ -1,0 +1,9 @@
+/*
+!.gitignore
+!/conf
+!/data
+!/local
+!/run.sh
+!/run.sh.template
+!/setup.sh
+!/setup.sh.template

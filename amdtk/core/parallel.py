@@ -17,7 +17,7 @@ AMDTK_PARALLEL_ENV = 'AMDTK_PARALLEL_ENV'
 ENVS = [
     "local",
     "sge",
-    "openccs"
+    "openccs",
     "openccs-single"
     ]
 
