@@ -1,32 +1,16 @@
 
-"""Dirichlet density."""
+"""Dirichlet prior for mixture models."""
 
 from scipy.special import gammaln, psi
 
 
 class Dirichlet(object):
-    """Dirichlet density.
-
-    Attributes
-    ----------
-    alphas : numpy.ndarray
-        Parameters of the Dirichlet density.
-
-    Methods
-    -------
-    expLogPi()
-        Expected value of the logarithm of the weights.
-    KL(pdf)
-        KL divergence between the current and the given densities.
-    newPosterior(stats)
-        New posterior distribution.
-
-    """
+    """Dirichlet density."""
 
     def __init__(self, alphas):
         self.alphas = alphas
 
-    def expLogPi(self):
+    def expected_log_weights(self):
         """Expected value of the logarithm of the weights.
 
         Returns
@@ -37,8 +21,11 @@ class Dirichlet(object):
         """
         return psi(self.alphas) - psi(self.alphas.sum())
 
-    def KL(self, pdf):
+    def kl_divergence(self, pdf):
         '''KL divergence between the current and the given densities.
+
+        pdf : :class:`Dirichlet`
+            Dirichlet density to compute the divergence with.
 
         Returns
         -------
@@ -46,19 +33,17 @@ class Dirichlet(object):
             KL divergence.
 
         '''
-        E_log_weights = self.expLogPi()
-        dirichlet_KL = gammaln(self.alphas.sum())
-        dirichlet_KL -= gammaln(pdf.alphas.sum())
-        dirichlet_KL -= gammaln(self.alphas).sum()
-        dirichlet_KL += gammaln(pdf.alphas).sum()
-        dirichlet_KL += (E_log_weights*(self.alphas - pdf.alphas)).sum()
-        return dirichlet_KL
+        exp_log_weights = self.expected_log_weights()
+        kl_div = gammaln(self.alphas.sum())
+        kl_div -= gammaln(pdf.alphas.sum())
+        kl_div -= gammaln(self.alphas).sum()
+        kl_div += gammaln(pdf.alphas).sum()
+        kl_div += (exp_log_weights*(self.alphas - pdf.alphas)).sum()
+        return kl_div
 
-    def newPosterior(self, stats):
-        """Create a new posterior distribution.
-
-        Create a new Dirichlet density given the parameters of the current
-        model and the statistics provided.
+    def new_posterior(self, stats):
+        """Create a new posterior distribution given the parameters of the
+        current model and the statistics provided.
 
         Parameters
         ----------

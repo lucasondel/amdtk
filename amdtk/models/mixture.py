@@ -1,127 +1,204 @@
 
-"""Mixture of distributions/densities."""
+"""Bayeisna Mixture of Gaussian."""
 
 import numpy as np
 from scipy.misc import logsumexp
-from .discrete_latent_model import DiscreteLatentModel
-from .dirichlet import Dirichlet
+from scipy.special import psi, gammaln
+from .model import Model
 
 
-class MixtureStats(object):
-    """Sufficient statistics for :class:BayesianMixture`.
+class Mixture(Model):
+    """Bayesian mixture of Gaussian with a Dirichlet prior."""
 
-    Methods
-    -------
-    __getitem__(key)
-        Index operator.
-    __add__(stats)
-        Addition operator.
-    __iadd__(stats)
-        In-place addition operator.
+    def __init__(self, components, alphas):    
+        """Initialize the mixture.
+        
+        Parameters
+        ----------
+        gaussians : list
+            List of :class:`Gaussian` components.
+        alphas : numpy.ndarray
+            Hyper-parameters of the Dirichlet prior.
+        
+        """
+        # Initialize the base class "Model".
+        super().__init__()
+        
+        self.halphas = alphas
+        self.palphas = alphas
+        self.components = components
 
-    """
-
-    def __init__(self, P_Z):
-        self.__stats = P_Z.sum(axis=0)
-
-    def __getitem__(self, key):
-        if type(key) is not int:
-            raise TypeError()
-        if key < 0 or key > 2:
-            raise IndexError
-        return self.__stats
-
-    def __add__(self, other):
-        new_stats = MixtureStats(len(self.__stats))
-        new_stats += self
-        new_stats += other
-        return new_stats
-
-    def __iadd__(self, other):
-        self.__stats += other.__stats
-        return self
-
-
-class BayesianMixture(DiscreteLatentModel):
-    """Bayesian mixture of probability distributions (or densities).
-
-     The prior is a Dirichlet density.
-
-    Attributes
-    ----------
-    prior : :class:`Dirichlet`
-        Prior density.
-    posterior : :class:`Dirichlet`
-        Posterior density.
-
-    Methods
-    -------
-    expLogLikelihood(X)
-        Expected value of the log-likelihood of the data given the
-        model.
-    KLPosteriorPrior()
-        KL divergence between the posterior and the prior densities.
-    updatePosterior(mixture_stats, pdf_stats)
-        Update the parameters of the posterior distribution according to
-        the accumulated statistics.
-    """
-
-    def __init__(self, alphas, components):
-        super().__init__(components)
-        self.prior = Dirichlet(alphas)
-        self.posterior = Dirichlet(alphas.copy())
-
-    def expLogLikelihood(self, X, weight=1.0):
-        """Expected value of the log-likelihood of the data given the
-        model.
-
+    def get_stats(self, X, resps):
+        """Compute the sufficient statistics for the model.
+        
         Parameters
         ----------
         X : numpy.ndarray
-            Data matrix of N frames with D dimensions.
-        weight : float
-            Scaling weight for the log-likelihood
-
+            Data (N x D) of N frames with D dimensions.
+        resps : numpy.ndarray
+            Weights (N x K) for each frame and each component.
+        
         Returns
         -------
-        E_llh : numpy.ndarray
-            The expected value of the log-likelihood for each frame.
-        E_log_P_Z: numpy.ndarray
-            Probability distribution of the latent states given the
-            data.
-
+        stats : dict
+            Nested dictionaries. Statistics for a specific model
+            are accesible by the key (model.id) of the model.
+            
         """
-        E_log_weights = self.posterior.expLogPi()
-        E_log_p_X = np.zeros((X.shape[0], self.k))
-        for i, pdf in enumerate(self.components):
-            E_log_p_X[:, i] += E_log_weights[i]
-            E_log_p_X[:, i] += pdf.expLogLikelihood(X)
-            E_log_p_X[:, i] *= weight
-        log_norm = logsumexp(E_log_p_X, axis=1)
-        E_log_P_Z = (E_log_p_X.T - log_norm).T
-        return log_norm, E_log_P_Z
-
-    def KLPosteriorPrior(self):
-        """KL divergence between the posterior and the prior densities.
-
+        stats_data = {}
+        stats_data[self.id] = {}
+        stats_data[self.id]['s0'] = resps.sum(axis=0)
+        for i, component in enumerate(self.components):
+            stats_data[component.id] = {}
+            stats_data[component.id] = component.get_stats(X, resps[:, i])
+        
+        return stats_data
+    
+    def log_likelihood(self, X):
+        """Log likelihood.
+        
+        Parameters 
+        ----------
+        X : numpy.ndarray
+            Data (N x D) of N frames with D dimensions.
+        
         Returns
         -------
-        KL : float
-            KL divergence.
-
+        llh : float
+            Log-likelihood.
+            
+        """ 
+        ncomps = len(self.components)
+        llh = np.zeros((X.shape[0], ncomps))
+        
+        log_weights = np.log(self.weights)
+        for i, component in enumerate(self.components):
+            llh[:, i] = log_weights[i] + component.log_likelihood(X)
+        
+        return llh
+       
+    def expected_log_likelihood(self, X):
+        """Expected value of the log likelihood.
+        
+        Parameters 
+        ----------
+        X : numpy.ndarray
+            Data (N x D) of N frames with D dimensions.
+        
+        Returns
+        -------
+        E_llh : float
+            Expected value of the log-likelihood.
+            
+        """ 
+        ncomps = len(self.components)
+        llh = np.zeros((X.shape[0], ncomps))
+        
+        log_weights = psi(self.palphas) - psi(self.palphas.sum())
+        for i, component in enumerate(self.components):
+            llh[:, i] = log_weights[i] + component.expected_log_likelihood(X)
+        
+        return llh
+    
+    def comp_expected_log_likelihood(self, X):
+        """Component-wise (no weights) Expected value of the log 
+        likelihood.
+        
+        Parameters 
+        ----------
+        X : numpy.ndarray
+            Data (N x D) of N frames with D dimensions.
+        
+        Returns
+        -------
+        E_llh : float
+            Expected value of the log-likelihood.
+            
+        """ 
+        ncomps = len(self.components)
+        llh = np.zeros((X.shape[0], ncomps))
+        for i, component in enumerate(self.components):
+            llh[:, i] = component.expected_log_likelihood(X)
+        
+        return llh
+    
+    def log_predictive(self, X):
+        """Log of the predictive distribution given the current state 
+        of the posterior's parameters.
+        
+        Parameters 
+        ----------
+        X : numpy.ndarray
+            Data (N x D) of N frames with D dimensions.
+        
+        Returns
+        -------
+        log_pred : float
+            log predictive density.
+            
         """
-        KL = 0
-        for component in self.components:
-            KL += component.KLPosteriorPrior()
-        return KL + self.posterior.KL(self.prior)
+        ncomps = len(self.components)
+        llh = np.zeros((X.shape[0], ncomps))
+        log_weights = np.log(self.palphas) - np.log(self.palphas.sum())
+        for i, component in enumerate(self.components):
+            llh[:, i] = log_weights[i] + component.log_predictive(X)
+        
+        norm = logsumexp(llh, axis=1)
+        return norm
+    
+    def comp_log_predictive(self, X):
+        """Component-wise (no weights) log of the predictive distribution 
+        given the current state of the posterior's parameters.
+        
+        Parameters 
+        ----------
+        X : numpy.ndarray
+            Data (N x D) of N frames with D dimensions.
+        
+        Returns
+        -------
+        log_pred : float
+            log predictive density.
+            
+        """
+        ncomps = len(self.components)
+        llh = np.zeros((X.shape[0], ncomps))
+        for i, component in enumerate(self.components):
+            llh[:, i] = component.log_predictive(X)
+        
+        return llh
 
-    def updatePosterior(self, mixture_stats):
-        """Update the parameters of the posterior distribution.
-
+    def update(self, stats):
+        """ Update the posterior parameters given the sufficient
+        statistics.
+        
         Parameters
         ----------
-        mixture_stats : :class:MixtureStats
-            Statistics of the mixture weights.
-
+        stats : dict
+            Dictionary of sufficient statistics.
+        
         """
-        self.posterior = self.prior.newPosterior(mixture_stats)
+        self.palphas = self.halphas + stats[self.id]['s0']
+        for component in self.components:
+            component.update(stats)
+    
+    def KL(self):
+        """Kullback-Leibler divergence between the posterior and 
+        the prior density.
+        
+        Returns 
+        -------
+        ret : float
+            KL(q(params) || p(params)).
+        
+        """
+        KL = 0.
+        KL = gammaln(self.palphas.sum())
+        KL -= gammaln(self.halphas.sum())
+        KL -= gammaln(self.palphas).sum()
+        KL += gammaln(self.halphas).sum()
+        log_weights = psi(self.palphas) - psi(self.palphas.sum())
+        KL += (self.palphas - self.halphas).dot(log_weights)
+        for component in self.components:
+            KL += component.KL()
+        return KL 

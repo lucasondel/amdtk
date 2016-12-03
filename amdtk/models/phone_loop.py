@@ -1,305 +1,364 @@
 
-"""Non-parametric Bayesian phone-loop model."""
+"""Phone-Loop model where each unit is modeled by a left-to-right HMM."""
 
-# NOTE:
-# Differing from what has been described in the paper, we do not put any
-# prior on the transition matrix as:
-#  * optimizing the states of the sub HMM does not help and is
-#    time consuming
-#  * transition between sub-HMMs are hanlded by weights taken
-#    from the Dirichlet process.
-
-import copy
+import logging
+from bisect import bisect
 import numpy as np
 from scipy.misc import logsumexp
-from ..models import DirichletProcessStats
-from ..models import TruncatedDirichletProcess
-from ..models import HmmGraph
-from ..models import MixtureStats
-from ..models import GaussianDiagCovStats
+from scipy.special import psi, gammaln
+from .model import Model
 
-# Watchout before changing this as we expect the silence name to be
-# lower (alphabetically speaking) than the unit prefix.
-UNIT_PREFIX = 'a'
-SILENCE_NAME = 'sil'
+def _log_transition_matrix(n_units, n_states, mixture_weights, ins_penalty=1., 
+                          prob_final_state=.5):
+    tot_n_states = n_units * n_states
+    init_states = np.arange(0, tot_n_states, n_states)
+    final_states = init_states + n_states - 1
+    A = np.zeros((tot_n_states, tot_n_states)) + float('-inf')
 
+    for ix, init_state in enumerate(init_states):
+        for offset in range(n_states - 1):
+            state = init_state + offset
+            A[state, state: state+2] = np.log(.5)
+        if n_states > 1:
+            A[final_states[ix], final_states[ix]] = np.log(prob_final_state)
+    
+    # Looping arcs
+    for final_state in final_states:
+        if n_states > 1:
+            A[final_state, init_states] = ins_penalty * np.log((1 - prob_final_state) * \
+                                                               mixture_weights)
+        else:
+            A[final_state, init_states] = np.log(mixture_weights)
+    
+    return A, init_states, final_states
 
-class BayesianInfinitePhoneLoop(object):
-    """Bayesian Infinite Phone Loop model.
-
-    Attributes
-    ----------
-    prior : :class:`TruncatedDirichletProcess`
-        Prior over the weights of each phone (i.e. unit) model.
-    posterior : :class:`TruncatedDirichletProcess`
-        Posterior over the weights of each phone (i.e. unit) model.
-    dgraph : :class:`HmmGraph`
-        HMM model corresponding to the phone loop model.
-    name_model : dict
-        Mapping "hmm state name" -> "emission probability model".
-    id_model : dict
-        Mapping "gmm unique id" -> "emission probability model".
-    name_id : dict
-        Mapping "hmm state name" -> "gmm unique id"
-    unit_names : list
-        Name assoctiated for each unit.
-
+                
+class PhoneLoop(Model):
+    """Hidden Markov Model.
+    
     """
-
-    def __init__(self, truncation, concentration, nstates, gmms,
-                 silence_model=None):
-        """Create a (infinite) phone loop model.
-
+    
+    def __init__(self, n_units, components, alpha, ins_penalty, dp_prior=False):
+        """Initialize the HMM.
+        
         Parameters
         ----------
-        truncation : int
-            Order of the truncation for the Truncated Dirichlet Process
-            posterior.
-        concentration : float
-            Concentration parameter of the Dirichlet Process prior.
-        nstates : int
-            Number of states for each HMM representing a single unit.
-        silence_model : model
-            If provided, the silence will be model explicitely in the
-            phone-loop. The silence state will be the only initial
-            state and final state of the HMM.
+        n_units : int
+            Number of units in the phone loop.
+        components : list
+            List of emissions.
+        alpha : float
+            Hyper-parameters for the symmetrix Dirichlet prior of the 
+            mixture weights.
+        ins_penalty : float
+            Insertion penalty. Values greater than 1 will prefer to remain 
+            in the current unit whereas values lower than 1 (and greater 
+            than 0) will favorize unit to unit transition.
+            
+        """
+        # Initialize the base class "Model".
+        super().__init__()
+        
+        # Guess the number of states per units.
+        self.n_units = n_units
+        self.n_states = int(len(components) / n_units)
+        
+        # Store the Gaussian.
+        self.components = components
+        
+        # Hyper-parameter prior/posterior.
+        self.dp_prior = dp_prior
+        if dp_prior:
+            self.hg1 = np.ones(n_units)
+            self.hg2 = np.zeros(n_units) + alpha
+            self.pg1 = np.ones(n_units)
+            self.pg2 = np.zeros(n_units) + alpha
+        else:
+            self.halphas = np.ones(n_units) * alpha
+            self.palphas = np.ones(n_units) * alpha
+        
+        # Expected value of the log weights.
+        weights = np.ones(self.n_units) / self.n_units
+        
+        # Create the log transition matrix.
+        self.log_A, self.init_states, self.final_states = \
+            _log_transition_matrix(n_units, self.n_states, weights, 
+                                   ins_penalty)
+       
+        self.ins_penalty = ins_penalty
+        
+        # A priori, no optimal ordering of the components.
+        self.optimal_order_idx = None
+    
+    def expected_log_weights(self):
+        """Expected value of the log of the weights of the DP.
+
+        Returns
+        -------
+        E_log_pi : float
+            Log weights.
 
         """
-        g1 = np.ones(truncation)
-        g2 = np.zeros(truncation) + concentration
-        tdp = TruncatedDirichletProcess(g1, g2)
-
-        if silence_model is not None:
-            nunits = truncation - 1
+        if self.dp_prior:
+            n = self.pg1.shape[0]
+            v = psi(self.pg1) - psi(self.pg1+self.pg2)
+            nv = psi(self.pg2) - psi(self.pg1+self.pg2)
+            for i in range(1, n):
+                v[i] += nv[:i].sum()
+            retval =  v
         else:
-            nunits = truncation
-
-        self.nstates = nstates
-
-        self.prior = tdp
-        self.posterior = copy.deepcopy(tdp)
-        self.dgraph = HmmGraph.standardPhoneLoop(UNIT_PREFIX, nunits,
-                                                 nstates)
-
-        if silence_model is not None:
-            self.dgraph.addSilenceState(SILENCE_NAME, nstates)
-            models = [silence_model] * nstates
-            models += gmms
+            retval = psi(self.palphas) - psi(self.palphas.sum())
+        
+        if self.optimal_order_idx is not None:
+            return retval[self.optimal_order_idx]
         else:
-            models = gmms
-
-        unit_names, state_names = self.dgraph.names
-        self.name_model = {}
-        self.id_model = {}
-        self.name_id = {}
-        for i, state_name in enumerate(sorted(state_names, reverse=True)):
-            self.name_model[state_name] = models[i]
-            self.id_model[i] = models[i]
-            self.name_id[state_name] = i
-        self.dgraph.setEmissions(self.name_model)
-
-        self.unit_names = sorted(list(set(unit_names)), reverse=True)
-        self.unit_name_index = {}
-        for i, unit_name in enumerate(self.unit_names):
-            self.unit_name_index[unit_name] = i
-
-        self.bigram = None
-
-        self.updateWeights()
-
-    def setBigramLM(self, bigram):
-        self.bigram = bigram
-        self.updateWeights()
-
-    def updateWeights(self):
-        """Update the weights of the phone loop."""
-        if self.bigram is None:
-            log_pi = self.posterior.expLogPi()
-            weights = {}
-            for i, unit_name in enumerate(self.unit_names):
-                weights[unit_name] = log_pi[i]
-            self.dgraph.setUnigramWeights(weights)
-        else:
-            self.dgraph.setBigramWeights(self.bigram)
-
-    def setLinearDecodingGraph(self, seq):
-        """Set the decoding graph to a linear sequence.
-
-        Parameters
-        ----------
-        seq : list
-            Sequence of unit.
-
-        """
-        self.dgraph = HmmGraph.linearSequence(seq, self.nstates, 
-                                              share_name_units=[SILENCE_NAME])
-        self.dgraph.setEmissions(self.name_model)
-
-    def evalAcousticModel(self, X, ac_weight=1.0):
-        """Compute the expected value of the log-likelihood of the
-        acoustic model of the phone loop.
-
+            return retval
+        
+    def get_stats(self, X, resps, state_resps):
+        """Compute the sufficient statistics for the model.
+        
         Parameters
         ----------
         X : numpy.ndarray
-            Data matrix of N frames with D dimensions.
-        ac_weight : float
-            Scaling of the acoustic scores.
-
-        Returnsgmm_log_P_Zs
-        -------
-        E_llh : numpy.ndarray
-            The expected value of the log-likelihood for each frame.
-        data : object
-            Additional data that the model can re-use when accumulating
-            the statistics.
-
-        """
-        return self.dgraph.evaluateEmissions(X, ac_weight=ac_weight)
-
-    def forwardBackward(self, am_llhs):
-        """Forward-backward algorithm of the phone-loop.
-
-        Parameters
-        ----------
-        am_llhs : numpy.ndarray
-            Acoustic model log likelihood.
-
+            Data (N x D) of N frames with D dimensions.
+        resps : numpy.ndarray
+            Weights for each frame.
+        state_resps : numpy.ndarray
+            Per-state weights for each frame.
+        
         Returns
         -------
-        E_log_P_X : float
-            The expected value of log probability of the sequence of
-            features.
-        log_P_Z : numpy.ndarray
-            Log responsibility per frame for each state of the HMM.
-        resp_units ; numpy.ndarray
-            The responsibility for each unit per frame.
-
+        stats : dict
+            Dictionary where 's0', 's1' and 's2' are the keys for the
+            zeroth, first and second order statistics respectively.
+        
         """
-        # Compute the forward-backward algorithm.
-        log_alphas = self.dgraph.forward(am_llhs)
-        log_betas = self.dgraph.backward(am_llhs)
-        log_P_Z = log_alphas + log_betas
-        log_P_Z = (log_P_Z.T - logsumexp(log_P_Z, axis=1)).T
-        P_Z = np.exp(log_P_Z)
-
-        # Evaluate the responsibilities for each units.
-        resp_units = np.zeros((len(am_llhs), len(self.unit_names)),
-                              dtype=float)
-        for idx, state in enumerate(self.dgraph.states):
-            unit_idx = self.unit_name_index[state.parent_name]
-            resp_units[:, unit_idx] += P_Z[:, idx]
-
-        # log-likelihood of the sequence. We compute it to monitor the
-        # convergence of the training.
-        E_log_P_X = logsumexp(log_alphas[-1])
-
-        return E_log_P_X, log_P_Z, np.log(resp_units + 1e-32)
-
-    def viterbi(self, am_llhs, output_states=False):
-        """Viterbi algorithm.
-
-        Parameters
-        ----------
-        am_llhs : numpy.ndarray
-            Log of the emission probabilites with shape (N x K) where N
-            is the number of frame in the sequence and K is the number
-            of state in the HMM model.
-        output_states : boolean
-            If true, the path will have the name of the HMM states
-            rather than the units' name (default: False).
-
-        Returns
-        -------
-        path : list
-            Ordered sequence of unit name corresponding to the most
-            likely sequence.
-
+        stats_data = {}
+        stats_data[self.id] = {}
+        tmp = resps.reshape((resps.shape[0], self.n_units, -1)).sum(axis=2)
+        stats_data[self.id]['s0'] = tmp.sum(axis=0)
+        s1 = np.zeros_like(stats_data[self.id]['s0'])
+        for i in range(len(stats_data[self.id]['s0'])-1):
+            s1[i] += stats_data[self.id]['s0'][i+1:].sum()
+        stats_data[self.id]['s1'] = s1
+        for i, component in enumerate(self.components):
+            stats_data[component.id] = {}
+            s_resps = state_resps[i]
+            weights = (resps[:, i] * s_resps.T).T
+            stats_data = {**stats_data, **component.get_stats(X, weights)}
+        return stats_data
+    
+    def forward(self, llhs):
+        """Forward recursion.
+        
         """
-        return self.dgraph.viterbi(am_llhs, not output_states)
+        log_alphas = np.zeros_like(llhs) - np.inf
+        log_alphas[0, self.init_states] = self.expected_log_weights()
+        for i in range(1, llhs.shape[0]):
+            log_alphas[i] = llhs[i]
+            log_alphas[i] += logsumexp(log_alphas[i-1] + self.log_A.T, axis=1)
+        return log_alphas
+    
+    def backward(self, llhs):
+        """Backward recursion.
+        
+        """
+        log_betas = np.zeros_like(llhs) - np.inf
+        log_betas[-1, self.final_states] = 0.
+        for i in reversed(range(llhs.shape[0]-1)):
+            log_betas[i] = logsumexp(self.log_A + llhs[i+1] + log_betas[i+1],
+                                     axis=1)
+        return log_betas
+    
+    def viterbi(self, llhs):
+        backtrack = np.zeros_like(llhs, dtype=int)
+        omega = np.zeros(llhs.shape[1]) + float('-inf')
+        omega[self.init_states] = llhs[0, self.init_states] + self.expected_log_weights()
+        for i in range(1, llhs.shape[0]):
+            hypothesis = omega + self.log_A.T
+            backtrack[i] = np.argmax(hypothesis, axis=1)
+            omega = llhs[i] + hypothesis[range(len(self.log_A)),
+                                            backtrack[i]]
+        path = [self.final_states[np.argmax(omega[self.final_states])]]
+        for i in reversed(range(1, len(llhs))):
+            path.insert(0, backtrack[i, path[0]])
+        return path
 
-    def stats(self, X, unit_log_resps, hmm_log_resps, am_log_resps):
-        """Compute the sufficient statistics for the training..
-
-        Parameters
+    def decode(self, X, state_label=False):
+        c_llhs = np.zeros((X.shape[0], self.n_states * self.n_units))
+        comp_resps = []
+        for k in range(self.n_states * self.n_units):
+            c_llh = self.components[k].expected_log_likelihood(X)
+            c_llhs[:, k] = logsumexp(c_llh, axis=1)
+        
+        path = self.viterbi(c_llhs)
+        path = [bisect(self.init_states, state) for state in path]
+        return path
+        
+    def expected_log_likelihood(self, X, ali=None):
+        """Expected value of the log likelihood.
+        
+        Parameters 
         ----------
         X : numpy.ndarray
-            Data matrix of N frames with D dimensions.
-        unit_log_resps : numpy.ndarray
-            Responsility for each unit of the model.
-        hmm_log_resps : numpy.ndarray
-            Responsibility for each state of the hmm.
-        am_log_resps : nlist of umpy.ndarray
-            Responsibility for each gmm of the model.
-
+            Data (N x D) of N frames with D dimensions.
+        ali : list of tuple
+            Unit level alignment (optional).
+        
         Returns
         -------
-        tdp_stats : :class:`DirichletProcessStats`
-            Statistics for the (Truncated) Dirichlet Process posterior.
-        gmm_stats : dict
-            Statistics for each GMM of the HMM.
-        gauss_stats : dict
-            Statistics for each Gaussian of the HMM.
+        E_llh : float
+            Expected value of the log-likelihood.
+        state_resps : numpy.ndarray
+            Per-state responsibility.
+            
+        """ 
+        # If the unit sequence is provided, build a mask to narrow 
+        # the search path of the alignments.
+        if ali is not None:
+            mask = np.zeros((X.shape[0], self.n_states * self.n_units))
+            for entry in ali:
+                index = int(entry[0])
+                start = entry[1]
+                end = entry[2]
+                if end > X.shape[0]:
+                    break
+                tmp = np.zeros((end - start, self.n_states * self.n_units)) \
+                    + float('-inf')
+                tmp[:, index * self.n_states: (index + 1) * self.n_states] = 0.
+                mask[start:end] = tmp
+            
+        c_llhs = np.zeros((X.shape[0], self.n_states * self.n_units))
+        comp_resps = []
+        for k in range(self.n_states * self.n_units):
+            c_llh = self.components[k].expected_log_likelihood(X)
+            c_llhs[:, k] = logsumexp(c_llh, axis=1)
+            resps = np.exp((c_llh.T - c_llhs[:, k]).T)
+            comp_resps.append(resps)
+        
+        # If the unit sequence is provided, filter the possible paths.
+        if ali is not None:
+            c_llhs += mask
+            
+        log_alphas = self.forward(c_llhs)
+        log_betas = self.backward(c_llhs)
+        log_q_z = log_alphas + log_betas
+        norm = logsumexp(log_q_z, axis=1)
+        log_q_z = (log_q_z.T - norm).T
 
+        return norm, np.exp(log_q_z), comp_resps 
+    
+    def log_predictive(self, X):
+        """Log of the predictive density given the current state 
+        of the posterior's parameters.
+        
+        Parameters 
+        ----------
+        X : numpy.ndarray
+            Data (N x D) of N frames with D dimensions.
+        
+        Returns
+        -------
+        log_pred : float
+            log predictive density.
+        state_resps : numpy.ndarray
+            Per-state responsibility.
+            
+        """        
+        for k in range(self.n_states):
+            g_llhs[:, k] = self.components[k].log_predictive(X)
+        
+        log_alphas = self.forward(g_llhs)
+        log_betas = self.backward(g_llhs)
+        log_q_z = log_alphas + log_betas
+        norm = logsumexp(log_q_z, axis=1)
+        log_q_z = (log_q_z.T - norm).T
+        
+        return norm
+   
+    def log_marginal_evidence(self):
+        for k in range(self.n_states):
+            g_llhs[:, k] = self.components[k].log_predictive(X)
+        
+        log_alphas = self.forward(g_llhs)
+        log_betas = self.backward(g_llhs)
+        log_q_z = log_alphas + log_betas
+        norm = logsumexp(log_q_z, axis=1)
+        
+        return norm
+   
+    def reorder(self):
+        self.optimal_order_idx = None
+        E_log_w = self.expected_log_weights()     
+        idx = E_log_w.argsort()[::-1]
+        new_components = []
+        for i in idx:
+            start = i * self.n_states
+            for k in range(start, start + self.n_states, 1):
+                new_components.append(self.components[k])
+        self.components = new_components
+        
+        self.optimal_order_idx = idx
+    
+    def update(self, stats):
+        """Update the posterior parameters given the sufficient
+        statistics.
+        
+        Parameters
+        ----------
+        stats : dict
+            Dictionary of sufficient statistics.
+        
         """
-        tdp_stats = DirichletProcessStats(np.exp(unit_log_resps))
-
-        gmm_stats = {}
-        gauss_stats = {}
-        for i, state in enumerate(self.dgraph.states):
-            gmm = state.model
-            log_weights = (hmm_log_resps[:, i] + am_log_resps[i].T).T
-            weights = np.exp(log_weights)
-            key = state.name
-            if key not in gmm_stats.keys():
-                gmm_stats[key] = MixtureStats(weights)
-                gauss_stats[key] = {}
-                for j in range(gmm.k):
-                    gauss_stats[key][j] = \
-                        GaussianDiagCovStats(X, weights[:, j])
+        if self.dp_prior:
+            self.pg1 = self.hg1 + stats[self.id]['s0']
+            self.pg2 = self.hg2 + stats[self.id]['s1']
+        else:
+            self.palphas = self.halphas + stats[self.id]['s0']
+        
+        for component in self.components:
+            component.update(stats)
+        
+        # Sort the unit from the most to the least likely.
+        if self.dp_prior:
+            self.reorder()
+        
+        # Update the transition matrix.
+        E_log_w = self.expected_log_weights()
+        E_log_w -= logsumexp(E_log_w)
+        prob_fs = np.exp(self.log_A[self.final_states[0], self.final_states[0]])
+        for fs in self.final_states:
+            if self.n_states > 1:
+                self.log_A[fs, self.init_states] = \
+                    self.ins_penalty * (np.log((1 - prob_fs)) + E_log_w)
             else:
-                gmm_stats[key] += MixtureStats(weights)
-                for j in range(gmm.k):
-                    gauss_stats[key][j] += \
-                        GaussianDiagCovStats(X, weights[:, j])
-
-        return tdp_stats, gmm_stats, gauss_stats
-
-    def KLPosteriorPrior(self):
-        """KL divergence between the posterior and the prior densities.
-
-        Returns
+                self.log_A[fs, init_states] = E_log_w
+        
+    def KL(self):
+        """Kullback-Leibler divergence between the posterior and 
+        the prior density.
+        
+        Returns 
         -------
-        KL : float
-            KL divergence.
-
+        ret : float
+            KL(q(params) || p(params)).
+        
         """
-        KL = 0
-        for name, gmm in self.name_model.items():
-            KL += gmm.KLPosteriorPrior()
-        return KL + self.posterior.KL(self.prior)
-
-    def updatePosterior(self, tdp_stats, gmm_stats, gauss_stats):
-        """Update the parameters of the posterior distributions
-        according to the accumulated statistics.
-
-        Parameters
-        ----------
-        tdp_stats : :class:`DirichletProcessStats`
-            Statistics for the (Truncated) Dirichlet Process posterior.
-        gmm_stats : dict
-            Statistics for each GMM of the HMM.
-        gauss_stats : dict
-            Statistics for each Gaussian of the HMM.
-
-        """
-        self.posterior = self.prior.newPosterior(tdp_stats)
-        for name, stats in gmm_stats.items():
-            gmm = self.name_model[name]
-            gmm.updatePosterior(stats)
-
-        for name, data in gauss_stats.items():
-            gmm = self.name_model[name]
-            for j, stats in data.items():
-                gmm.components[j].updatePosterior(stats)
-        self.updateWeights()
+        KL = 0.
+        
+        if self.dp_prior:
+            for i in range(self.pg1.shape[0]):
+                a1 = np.array([self.pg1[i], self.pg2[i]])
+                a2 = np.array([self.hg1[i], self.hg2[i]])
+                KL += gammaln(a1.sum()) - gammaln(a2.sum()) - gammaln(a1).sum() + gammaln(a2).sum()
+        else:
+            KL = gammaln(self.palphas.sum())
+            KL -= gammaln(self.halphas.sum())
+            KL -= gammaln(self.palphas).sum()
+            KL += gammaln(self.halphas).sum()
+            log_weights = self.expected_log_weights()
+            KL += (self.palphas - self.halphas).dot(log_weights)
+        
+        for component in self.components:
+            KL += component.KL()
+        return KL 
