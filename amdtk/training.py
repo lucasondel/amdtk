@@ -1,5 +1,5 @@
 
-""" Implementation of various training agorithms."""
+"""Implementation of the training agorithms for the phone loop."""
 
 import tempfile
 import os 
