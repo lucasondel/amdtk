@@ -46,11 +46,11 @@ class Mixture(Model):
 
         """
         stats_data = {}
-        stats_data[self.id] = {}
-        stats_data[self.id]['s0'] = weights.sum(axis=0)
+        stats_data[self.uid] = {}
+        stats_data[self.uid]['s0'] = weights.sum(axis=0)
         for i, component in enumerate(self.components):
-            stats_data[component.id] = {}
-            stats_data[component.id] = \
+            stats_data[component.uid] = {}
+            stats_data[component.uid] = \
                 component.get_stats(data, weights[:, i])
 
         return stats_data
@@ -88,7 +88,7 @@ class Mixture(Model):
             Dictionary of sufficient statistics.
 
         """
-        self.posterior_count = self.prior_count + stats[self.id]['s0']
+        self.posterior_count = self.prior_count + stats[self.uid]['s0']
         for component in self.components:
             component.update(stats)
 

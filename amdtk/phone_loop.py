@@ -6,6 +6,7 @@ import numpy as np
 from scipy.misc import logsumexp
 from scipy.special import psi, gammaln
 from .model import Model
+from .mixture import Mixture
 
 
 def __log_transition_matrix(n_units, n_states, mixture_weights, ins_penalty=1.,
@@ -375,14 +376,9 @@ class PhoneLoop(Model):
                 kl_div += gammaln(np.sum(val1)) - gammaln(np.sum(val2)) - \
                     gammaln(val1).sum() + gammaln(val2).sum()
         else:
-            kl_div = gammaln(self.posterior_count.sum())
-            kl_div -= gammaln(self.prior_count.sum())
-            kl_div -= gammaln(self.posterior_count).sum()
-            kl_div += gammaln(self.prior_count).sum()
-            log_weights = psi(self.posterior_count) - \
-                psi(self.posterior_count.sum())
-            kl_div += (self.posterior_count - \
-                       self.prior_count).dot(log_weights)
+            tmp_mixture = Mixture([], self.prior_count)
+            tmp_mixture.posterior_count = self.posterior_count
+            kl_div = tmp_mixture.kl_divergence()
         for component in self.components:
             kl_div += component.kl_divergence()
         return kl_div

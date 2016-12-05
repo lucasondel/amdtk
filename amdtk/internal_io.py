@@ -77,6 +77,10 @@ def read_htk(path, infos=False):
         The data as a matrix and a tuple (nSamples, sampPeriod, sampSize)
 
     """
+    # pylint: disable=too-many-locals
+    # No need to split this code into multiple functions
+    # as it will be only used here.
+
     start = 0
     end = None
     if '[' in path:
@@ -159,14 +163,18 @@ def __is_start_or_end_field(field):
 
 
 def __is_score_field(field):
+    retval = True
     try:
         float(field)
     except ValueError:
-        return False
-    return True
+        retval = False
+    return retval
 
 
 def __read_htk_labels(lines, samp_period):
+    # pylint: disable=too-many-branches
+    # Parsing a file needs many branches.
+
     # Even though it is not written in the documentation the source code of
     # HTK 3.4.1 assume ';' as comment delimiter.
     comment_delimiter = ';'
@@ -443,6 +451,9 @@ def read_ctm(fpt, pos=(0, 1, 2, 3), has_duration=False, file_transform=None,
         [('MR.', 0.91, 1.26, True),
          ('MAUCHER', 1.26, 1.6, True)]
     """
+    # pylint: disable=too-many-arguments
+    # pylint: disable=too-many-locals
+    # Not sure this code will remain.
 
     ctm = dict()
     for line in fpt:

@@ -1,30 +1,15 @@
-from .core import readCTM
-from .core import readHtk
-from .core import writeHtk
-from .core import writeHtkText
-from .core import readHtkLabels
-from .core import writeHtkLabels
-from .core import readTimitLabels
-from .core import readMlf
-from .core import writeMlf
-from .core import readHtkLattice
-from .core import writeEval2Clusters
 
-from .core import ParallelEnv
+"""Acoustic Model Discovery Toolkit (AMDTK) module.
+Set of tools to do Bayesian clustering of raw acoustic
+features to automatically discover phone-like units.
 
-from .core import phoneLoopVbExpectation
-from .core import phoneLoopVb1BestExpectation
-from .core import phoneLoopVbMaximization
-from .core import phoneLoopDecode
-from .core import phoneLoopPosteriors
-from .core import phoneLoopForwardBackwardPosteriors
-
-from .core import parseLMParams
-from .core import textToInt
-from .core import prepareText
-from .core import getVocabFromText
-from .core import initNgramLM
-from .core import sampleNgramLM
-from .core import resampleNgramLM
-from .core import NgramLMLogLikelihood
-from .core import samplePathFromFst
+"""
+from .internal_io import read_htk
+from .internal_io import write_htk
+from .internal_io import read_htk_labels
+from .internal_io import write_htk_labels
+from .internal_io import read_timit_labels
+from .internal_io import read_mlf
+from .internal_io import write_mlf
+from .internal_io import read_ctm
+from .internal_io import write_eval_to_clusters

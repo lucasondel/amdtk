@@ -105,9 +105,9 @@ class GaussianDiagCov(Model):
             Dictionary of sufficient statistics.
 
         """
-        stats_0 = stats[self.id]['s0']
-        stats_1 = stats[self.id]['s1']
-        stats_2 = stats[self.id]['s2']
+        stats_0 = stats[self.uid]['s0']
+        stats_1 = stats[self.uid]['s1']
+        stats_2 = stats[self.uid]['s2']
         self.posterior_mcount = self.prior_mcount + stats_0
         self.posterior_mean = (self.prior_mcount * self.prior_mean + stats_1)
         self.posterior_mean /= (self.prior_mcount + stats_0)
