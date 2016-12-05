@@ -1,9 +1,0 @@
-/*
-!.gitignore
-!/conf
-!/local
-!/run_lm.sh
-!/run_scoring.sh
-!/run.sh.template
-!/setup_scoring.sh
-!/setup.sh
