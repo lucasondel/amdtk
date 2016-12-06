@@ -9,28 +9,6 @@ from .model import Model
 from .mixture import Mixture
 
 
-def __log_transition_matrix(n_units, n_states, mixture_weights, ins_penalty=1.,
-                            prob_final_state=.5):
-    tot_n_states = n_units * n_states
-    init_states = np.arange(0, tot_n_states, n_states)
-    final_states = init_states + n_states - 1
-    trans_mat = np.zeros((tot_n_states, tot_n_states)) + float('-inf')
-    for idx, init_state in enumerate(init_states):
-        for offset in range(n_states - 1):
-            state = init_state + offset
-            trans_mat[state, state: state + 2] = np.log(.5)
-        if n_states > 1:
-            trans_mat[final_states[idx], final_states[idx]] = \
-                np.log(prob_final_state)
-    for final_state in final_states:
-        if n_states > 1:
-            trans_mat[final_state, init_states] = ins_penalty * \
-                np.log((1 - prob_final_state) * mixture_weights)
-        else:
-            trans_mat[final_state, init_states] = np.log(mixture_weights)
-    return trans_mat, init_states, final_states
-
-
 class PhoneLoop(Model):
     """Bayesian Phone (i.e. unit) Loop model. Note that
     the transition probability inside a unit is considered
@@ -43,6 +21,28 @@ class PhoneLoop(Model):
     # pylint: disable=too-many-instance-attributes
     # This is a complex model hence the number
     # a lot of parameters.
+    
+    @staticmethod
+    def __log_transition_matrix(n_units, n_states, mixture_weights, ins_penalty=1.,
+                                prob_final_state=.5):
+        tot_n_states = n_units * n_states
+        init_states = np.arange(0, tot_n_states, n_states)
+        final_states = init_states + n_states - 1
+        trans_mat = np.zeros((tot_n_states, tot_n_states)) + float('-inf')
+        for idx, init_state in enumerate(init_states):
+            for offset in range(n_states - 1):
+                state = init_state + offset
+                trans_mat[state, state: state + 2] = np.log(.5)
+            if n_states > 1:
+                trans_mat[final_states[idx], final_states[idx]] = \
+                    np.log(prob_final_state)
+        for final_state in final_states:
+            if n_states > 1:
+                trans_mat[final_state, init_states] = ins_penalty * \
+                    np.log((1 - prob_final_state) * mixture_weights)
+            else:
+                trans_mat[final_state, init_states] = np.log(mixture_weights)
+        return trans_mat, init_states, final_states
 
     def __init__(self, n_units, components, concentration, ins_penalty,
                  dp_prior=False):
@@ -81,7 +81,7 @@ class PhoneLoop(Model):
             self.posterior_count = np.ones(n_units) * concentration
         weights = np.ones(self.n_units) / self.n_units
         self.log_trans_mat, self.init_states, self.final_states = \
-            __log_transition_matrix(n_units, self.n_states, weights,
+            PhoneLoop.__log_transition_matrix(n_units, self.n_states, weights,
                                     ins_penalty)
         self.ins_penalty = ins_penalty
         self.optimal_order_idx = None

@@ -55,7 +55,7 @@ def read_htk(path, infos=False):
     """ Read binary file according to the specification given
     `here <http://www.ee.columbia.edu/ln/LabROSA/doc/HTKBook21/node58.html>`_.
     Eventually, one can specify a specific portion of the file to load
-    by addig a suffix to path as:
+    by adding a suffix to path as:
     ```
     /path/to/file[start_frame:end_frame]
     ```
@@ -90,7 +90,8 @@ def read_htk(path, infos=False):
         start, end = timing.strip('[]').split(':')
         start = int(start)
         end = int(end)
-
+    print('start:', start, 'end:', end)
+    
     with open(path, 'rb') as file_obj:
         header_size = 12
         header = file_obj.read(header_size)
@@ -98,6 +99,7 @@ def read_htk(path, infos=False):
             unpack('>IIHH', header)
         if param_kind & _C:
             size = int(samp_size/2)
+            print('size:', size)
             dtype = 'h'
             if param_kind & 0x3F == IREFC:
                 denom = 32767.
@@ -106,8 +108,8 @@ def read_htk(path, infos=False):
             else:
                 offset = 2*size*4
                 file_obj.seek(header_size)
-                denom = float(np.fromfile(file_obj, dtype='>f', count=size))
-                bias = float(np.fromfile(file_obj, dtype='>f', count=size))
+                denom = np.fromfile(file_obj, dtype='>f', count=size)
+                bias = np.fromfile(file_obj, dtype='>f', count=size)
         else:
             size = int(samp_size/4)
             dtype = 'f'
@@ -119,11 +121,15 @@ def read_htk(path, infos=False):
             data = data[:-1]
         new_shape = (int(len(data)/size), size)
         data = data.reshape(new_shape)
+
         if param_kind & _C:
             data = (data + bias) / denom
+            
+        print('start:', start, 'end:', end)
+        print('data.shape:', data.shape)
         if not infos:
-            return data[start, end]
-        return data[start, end], (n_samples, samp_period, samp_size)
+            return data[start: end]
+        return data[start: end], (n_samples, samp_period, samp_size)
 
 
 def write_htk(path, data, samp_period=100000):

@@ -100,7 +100,6 @@ def std_exp(fea_file):
     # These imports are done on the remote workers.
     import os
     import pickle
-    from . import read_htk
 
     print('processing:', fea_file)
 
@@ -163,6 +162,9 @@ class StandardVariationalBayes(object):
         self.temp_dir = tempfile.mkdtemp(dir=cwd)
         self.alignments = alignments
         self.dview.block = True
+        
+        with self.dview.sync_imports():
+            from amdtk import read_htk
 
     def epoch(self, model):
         """Perform one epoch (i.e. processing the whole data set)

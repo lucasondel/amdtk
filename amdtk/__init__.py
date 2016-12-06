@@ -13,3 +13,13 @@ from .internal_io import read_mlf
 from .internal_io import write_mlf
 from .internal_io import read_ctm
 from .internal_io import write_eval_to_clusters
+
+from .training import acc_stats
+from .training import add_stats
+from .training import remove_stats
+from .training import StandardVariationalBayes
+
+from .phone_loop import PhoneLoop
+from .model import Model
+from .mixture import Mixture
+from .gaussian import GaussianDiagCov
