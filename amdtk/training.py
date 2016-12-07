@@ -162,7 +162,7 @@ class StandardVariationalBayes(object):
         self.temp_dir = tempfile.mkdtemp(dir=cwd)
         self.alignments = alignments
         self.dview.block = True
-        
+
         with self.dview.sync_imports():
             from amdtk import read_htk
 
@@ -173,9 +173,9 @@ class StandardVariationalBayes(object):
         """
         # Propagate the model to all the remote nodes.
         self.dview.push({
-            'model': model,
-            'temp_dir': self.temp_dir,
-            'alignments': self.alignments
+            'MODEL': model,
+            'TEMP_DIR': self.temp_dir,
+            'ALIGNMENTS': self.alignments
         })
 
         # Optimize the latent variables given the current values of the
@@ -196,7 +196,7 @@ class StandardVariationalBayes(object):
         # parameters given the values of the latent variables.
         model.update(total_stats)
 
-        return total_stats[-1]['E_log_X'] - model.KL()
+        return total_stats[-1]['E_log_X'] - model.kl_divergence()
 
     def cleanup(self):
         """Cleanup the resources allocated for the training."""

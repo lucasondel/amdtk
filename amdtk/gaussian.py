@@ -89,10 +89,11 @@ class GaussianDiagCov(Model):
             Expected value of the log-likelihood.
 
         """
+        expected_prec = self.posterior_pcount / self.posterior_prec
         expected_log_prec = psi(self.posterior_pcount) \
             - np.log(self.posterior_prec)
         log_norm = (expected_log_prec - 1 / self.posterior_mcount)
-        return .5 * (log_norm - expected_log_prec * \
+        return .5 * (log_norm - expected_prec * \
                      (data - self.posterior_mean)**2).sum(axis=1)
 
     def update(self, stats):
@@ -106,15 +107,19 @@ class GaussianDiagCov(Model):
 
         """
         stats_0 = stats[self.uid]['s0']
-        stats_1 = stats[self.uid]['s1']
-        stats_2 = stats[self.uid]['s2']
+        if stats_0 > 1.:
+            stats_1 = stats[self.uid]['s1']
+            stats_2 = stats[self.uid]['s2']
+        else:
+            stats_1 = np.zeros_like(stats[self.uid]['s1'])
+            stats_2 = np.zeros_like(stats[self.uid]['s2'])
         self.posterior_mcount = self.prior_mcount + stats_0
         self.posterior_mean = (self.prior_mcount * self.prior_mean + stats_1)
         self.posterior_mean /= (self.prior_mcount + stats_0)
         self.posterior_pcount = self.prior_pcount + .5 * stats_0
         tmp = (self.prior_mcount * self.prior_mean + stats_1)**2
         tmp /= self.prior_mcount + stats_0
-        self.posterior_prec = self.prior_prec
+        self.posterior_prec = self.prior_prec.copy()
         self.posterior_prec += 0.5 * (-tmp + stats_2 + self.prior_mcount * \
                                       self.prior_mean**2)
 
