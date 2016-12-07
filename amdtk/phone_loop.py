@@ -108,13 +108,15 @@ class PhoneLoop(Model):
             return retval[self.optimal_order_idx]
         return retval
 
-    def get_stats(self, data, weights, state_weights):
+    def get_stats(self, data, units_stats, weights, state_weights):
         """Compute the sufficient statistics for the model.
 
         Parameters
         ----------
         data : numpy.ndarray
             Input data (N x D) of N frames with D dimensions.
+        units_stats : numpy.ndarray
+            Expected count for the units.
         weights : numpy.ndarray
             Weights for each frame.
         state_resps : numpy.ndarray
@@ -131,8 +133,9 @@ class PhoneLoop(Model):
         stats_data[self.uid] = {}
 
         # WARNING: this code is wrong.
-        tmp = weights.reshape((weights.shape[0], self.n_units, -1)).sum(axis=2)
-        stats_data[self.uid]['s0'] = tmp.sum(axis=0)
+        #tmp = weights.reshape((weights.shape[0], self.n_units, -1)).sum(axis=2)
+        #stats_data[self.uid]['s0'] = tmp.sum(axis=0)
+        stats_data[self.uid]['s0'] = units_stats
 
         stats_1 = np.zeros_like(stats_data[self.uid]['s0'])
         for i in range(len(stats_data[self.uid]['s0']) - 1):
@@ -288,8 +291,12 @@ class PhoneLoop(Model):
         -------
         E_llh : float
             Expected value of the log-likelihood.
+        units_stats : numpy.ndarray
+            Expected count for the units.
         state_resps : numpy.ndarray
-            Per-state responsibility.
+            Per state responsibility.
+        comp_resps : numpy.ndarray
+            Per sate component responsibility.
 
         """
         if ali is not None:
@@ -306,10 +313,42 @@ class PhoneLoop(Model):
         log_alphas = self.forward(c_llhs)
         log_betas = self.backward(c_llhs)
         log_q_z = log_alphas + log_betas
-        norm = logsumexp(log_q_z, axis=1)
-        log_q_z = (log_q_z.T - norm).T
-        return norm, np.exp(log_q_z), comp_resps
+        norm = logsumexp(log_q_z[-1])
+        log_q_z = log_q_z - norm
+        units_stats = self.units_stats(c_llhs, log_alphas, log_betas)
+        return norm, units_stats, np.exp(log_q_z), comp_resps
 
+    def units_stats(self, c_llhs, log_alphas, log_betas):
+        """Extract the statistics needed to re-estimate the 
+        weights of the units.
+        
+        Parameters
+        ----------
+        c_llhs : numpy.ndarray
+            Emissions log-likelihood.
+        log_alphas : numpy.ndarray
+            Log of the results of the forward recursion.
+        log_betas : numpy.ndarray
+            Log of the results of the backward recursion.
+        
+        Returns
+        -------
+        units_stats : numpy.ndarray
+            Units' statistics.
+            
+        """
+        log_units_stats = np.zeros(self.n_units)
+        norm = logsumexp(log_alphas[-1] + log_betas[-1])
+        for n_unit in range(self.n_units):
+            index1 = n_unit * self.n_states + 1
+            index2 = index1 + 1
+            log_prob_trans = self.log_trans_mat[index1, index2]
+            log_q_zn1_zn2 = log_alphas[:-1, index1] + c_llhs[1:, index2] + \
+                log_prob_trans + log_betas[1:, index2]
+            log_q_zn1_zn2 -= norm
+            log_units_stats[n_unit] = logsumexp(log_q_zn1_zn2)
+        return np.exp(log_units_stats)
+    
     def reorder(self):
         """Reorder the units so that the most frequent have
         a small index. This is needed when the weights of

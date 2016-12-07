@@ -118,12 +118,13 @@ def std_exp(fea_file):
         ali = ALIGNMENTS[fea_file]
     else:
         ali = None
-    expected_llh, unit_resps, state_resps = \
+    expected_llh, unit_stats, state_resps, comp_resps = \
         MODEL.expected_log_likelihood(data, ali)
 
     # Get the sufficient statistics of the model given the
     # responsibilities.
-    stats = MODEL.get_stats(data, unit_resps, state_resps)
+    stats = MODEL.get_stats(data, unit_stats, state_resps,
+                            comp_resps)
 
     # Add the normalizer to the stats to compute the
     # lower bound.
