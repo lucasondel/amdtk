@@ -128,7 +128,10 @@ def std_exp(fea_file):
 
     # Add the normalizer to the stats to compute the
     # lower bound.
-    stats[-1] = {'E_log_X': expected_llh.sum()}
+    stats[-1] = {
+        'E_log_X': expected_llh,
+        'N': data.shape[0]
+    }
 
     # Store the stats.
     out_path = os.path.join(TEMP_DIR, key)
@@ -197,7 +200,7 @@ class StandardVariationalBayes(object):
         # parameters given the values of the latent variables.
         model.update(total_stats)
 
-        return total_stats[-1]['E_log_X'] - model.kl_divergence()
+        return (total_stats[-1]['E_log_X'] - model.kl_divergence()) / total_stats[-1]['N']
 
     def cleanup(self):
         """Cleanup the resources allocated for the training."""
