@@ -90,8 +90,7 @@ def read_htk(path, infos=False):
         start, end = timing.strip('[]').split(':')
         start = int(start)
         end = int(end)
-    print('start:', start, 'end:', end)
-    
+
     with open(path, 'rb') as file_obj:
         header_size = 12
         header = file_obj.read(header_size)
@@ -124,9 +123,7 @@ def read_htk(path, infos=False):
 
         if param_kind & _C:
             data = (data + bias) / denom
-            
-        print('start:', start, 'end:', end)
-        print('data.shape:', data.shape)
+
         if not infos:
             return data[start: end]
         return data[start: end], (n_samples, samp_period, samp_size)
