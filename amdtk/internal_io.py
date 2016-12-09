@@ -98,7 +98,6 @@ def read_htk(path, infos=False):
             unpack('>IIHH', header)
         if param_kind & _C:
             size = int(samp_size/2)
-            print('size:', size)
             dtype = 'h'
             if param_kind & 0x3F == IREFC:
                 denom = 32767.
