@@ -2,11 +2,18 @@
 """Phone-Loop model where each unit is modeled by a left-to-right HMM."""
 
 from bisect import bisect
+from itertools import groupby
 import numpy as np
 from scipy.misc import logsumexp
 from scipy.special import psi, gammaln
 from .model import Model
 from .mixture import Mixture
+
+
+def _sample_state(log_prob_trans, log_alpha):
+    log_prob = log_alpha + log_prob_trans
+    log_prob -= logsumexp(log_prob)
+    return np.random.choice(log_prob.shape[0], p=np.exp(log_prob))
 
 
 class PhoneLoop(Model):
@@ -21,7 +28,7 @@ class PhoneLoop(Model):
     # pylint: disable=too-many-instance-attributes
     # This is a complex model hence the number
     # a lot of parameters.
-    
+
     @staticmethod
     def __log_transition_matrix(n_units, n_states, mixture_weights, ins_penalty=1.,
                                 prob_final_state=.5):
@@ -32,7 +39,7 @@ class PhoneLoop(Model):
         for idx, init_state in enumerate(init_states):
             for offset in range(n_states - 1):
                 state = init_state + offset
-                trans_mat[state, state: state + 2] = np.log(.5)
+                trans_mat[state, state: state + n_states - 1] = np.log(.5)
             if n_states > 1:
                 trans_mat[final_states[idx], final_states[idx]] = \
                     np.log(prob_final_state)
@@ -220,13 +227,15 @@ class PhoneLoop(Model):
             path.insert(0, backtrack[i, path[0]])
         return path
 
-    def decode(self, data):
+    def decode(self, data, state_path=False):
         """Find the most likely sequence of units given the data.
 
         Parameters
         ----------
         data : numpy.ndarray
             Input data (N x D) of N frames with D dimensions.
+        state_path : boolean
+            If True, return the state path instead of the unit path.
 
         Returns
         -------
@@ -239,8 +248,57 @@ class PhoneLoop(Model):
             c_llh = self.components[k].expected_log_likelihood(data)
             c_llhs[:, k] = logsumexp(c_llh, axis=1)
         path = self.viterbi(c_llhs)
-        path = [bisect(self.init_states, state) for state in path]
+        if not state_path:
+            path = [bisect(self.init_states, state) for state in path]
+        path = ['a' + str(x[0]+1) for x in groupby(path)]
         return path
+
+
+
+    def sample_paths(self, data, size=1, state_path=False):
+        """Sample a sequence of units given the data.
+
+        Parameters
+        ----------
+        data : numpy.ndarray
+            Input data (N x D) of N frames with D dimensions.
+        size : int
+            Number of paths to sample.
+        state_path : boolean
+            If True, return the state path instead of the unit path.
+
+        Returns
+        -------
+        path : list
+            List of indices of the most likely state sequence.
+
+        """
+        c_llhs = np.zeros((data.shape[0], self.n_states * self.n_units))
+        for k in range(self.n_states * self.n_units):
+            c_llh = self.components[k].expected_log_likelihood(data)
+            c_llhs[:, k] = logsumexp(c_llh, axis=1)
+        log_alphas = self.forward(c_llhs)
+
+        # The mask is to make sure the sampled path ends up in
+        # a final state.
+        mask = np.zeros(log_alphas.shape[-1]) + float('-inf')
+        mask[self.final_states] = 0.
+
+        s_paths = []
+        for i in range(size):
+            s_path = []
+            for j in reversed(range(log_alphas.shape[0])):
+                if j == log_alphas.shape[0] - 1:
+                    log_prob_trans = mask
+                else:
+                    log_prob_trans = self.log_trans_mat[:, s_path[-1]]
+                s_path.append(_sample_state(log_prob_trans, log_alphas[j]))
+            if not state_path:
+                s_path = [bisect(self.init_states, state) for state in s_path]
+            s_path = ['a' + str(x[0]+1) for x in groupby(s_path)]
+            s_paths.append([x for x in reversed(s_path)])
+
+        return s_paths
 
     def mask_from_alignments(self, data, ali):
         """Return a mask to filter the possible path while computing
@@ -319,9 +377,9 @@ class PhoneLoop(Model):
         return norm, units_stats, np.exp(log_q_z), comp_resps
 
     def units_stats(self, c_llhs, log_alphas, log_betas):
-        """Extract the statistics needed to re-estimate the 
+        """Extract the statistics needed to re-estimate the
         weights of the units.
-        
+
         Parameters
         ----------
         c_llhs : numpy.ndarray
@@ -330,12 +388,12 @@ class PhoneLoop(Model):
             Log of the results of the forward recursion.
         log_betas : numpy.ndarray
             Log of the results of the backward recursion.
-        
+
         Returns
         -------
         units_stats : numpy.ndarray
             Units' statistics.
-            
+
         """
         log_units_stats = np.zeros(self.n_units)
         norm = logsumexp(log_alphas[-1] + log_betas[-1])
@@ -348,7 +406,7 @@ class PhoneLoop(Model):
             log_q_zn1_zn2 -= norm
             log_units_stats[n_unit] = logsumexp(log_q_zn1_zn2)
         return np.exp(log_units_stats)
-    
+
     def reorder(self):
         """Reorder the units so that the most frequent have
         a small index. This is needed when the weights of

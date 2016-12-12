@@ -147,32 +147,57 @@ class StandardVariationalBayes(object):
 
     """
 
-    def __init__(self, fealist, dview, alignments=None):
+    def __init__(self, fealist, dview, epochs, alignments=None, callback=None):
         """
 
         Parameters
         ----------
         fealist : list
             List of features file.
-        remote_clister : object
-            Remote client object to parallelize the training.
+        dview : object
+            Remote client objects to parallelize the training.
+        epochs : int
+            Number of epochs
         alignments : MLF data
             Unit level alignments (optional).
+        callback : function
+            Function called at the after each epoch.
 
         """
         self.fealist = fealist
         self.dview = dview
+        self.epochs = epochs
         cwd = os.getcwd()
         self.temp_dir = tempfile.mkdtemp(dir=cwd)
         self.alignments = alignments
         self.dview.block = True
+        self.callback = callback
 
         with self.dview.sync_imports():
             from amdtk import read_htk
 
+    def run(self, model):
+        """Run the Standard Variational Bayes training.
+
+        Parameters
+        ----------
+        model : :class:`PhoneLoop`
+            Phone Loop model to train.
+
+        """
+        for epoch in range(self.epochs):
+            lower_bound = self.epoch(model)
+            if self.callback is not None:
+                self.callback(model, epoch + 1, lower_bound)
+
     def epoch(self, model):
         """Perform one epoch (i.e. processing the whole data set)
         of the training.
+
+        Parameters
+        ----------
+        model : :class:`PhoneLoop`
+            Phone Loop model to train.
 
         """
         # Propagate the model to all the remote nodes.
