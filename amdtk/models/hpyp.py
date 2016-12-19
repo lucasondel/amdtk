@@ -113,12 +113,13 @@ class PitmanYorProcess(object):
             else:
                 G = self.G0
 
+            Nt = np.count_nonzero(self.tables)
             dish_tables_ix = list(self.dish_table[dish])
             dish_tables = self.tables[dish_tables_ix]
             Ntd = len(dish_tables)
             pd = np.zeros(len(dish_tables) + 1, dtype=float)
             pd[:Ntd] = dish_tables - self.d
-            pd[-1] = (self.theta + (self.d * Ntd)) * G
+            pd[-1] = (self.theta + (self.d * Nt)) * G
             pd /= pd.sum()
 
             assert np.isclose(pd.sum(), 1)
@@ -362,9 +363,9 @@ class HierarchicalPitmanYorProcess(object):
             # accumulate hyper-hyperparameters
             for restaurant in self.hierarchy[level].values():
                 sum_Yui, sum_one_minus_Yui = restaurant.sampleSumYui()
-                a += sum_Yui
+                a += sum_one_minus_Yui
                 b += restaurant.sampleSumOneMinusZuwkj()
-                shape += sum_one_minus_Yui
+                shape += sum_Yui
                 inv_scale -= restaurant.sampleLogXu()
 
             # resample concentration and discount
