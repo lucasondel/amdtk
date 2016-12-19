@@ -113,12 +113,13 @@ class PitmanYorProcess(object):
             else:
                 G = self.G0
 
+            Nt = np.count_nonzero(self.tables)
             dish_tables_ix = list(self.dish_table[dish])
             dish_tables = self.tables[dish_tables_ix]
             Ntd = len(dish_tables)
             pd = np.zeros(len(dish_tables) + 1, dtype=float)
             pd[:Ntd] = dish_tables - self.d
-            pd[-1] = (self.theta + (self.d * Ntd)) * G
+            pd[-1] = (self.theta + (self.d * Nt)) * G
             pd /= pd.sum()
 
             assert np.isclose(pd.sum(), 1)
