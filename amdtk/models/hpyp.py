@@ -363,9 +363,9 @@ class HierarchicalPitmanYorProcess(object):
             # accumulate hyper-hyperparameters
             for restaurant in self.hierarchy[level].values():
                 sum_Yui, sum_one_minus_Yui = restaurant.sampleSumYui()
-                a += sum_Yui
+                a += sum_one_minus_Yui
                 b += restaurant.sampleSumOneMinusZuwkj()
-                shape += sum_one_minus_Yui
+                shape += sum_Yui
                 inv_scale -= restaurant.sampleLogXu()
 
             # resample concentration and discount
