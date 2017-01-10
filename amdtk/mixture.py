@@ -25,7 +25,7 @@ class Mixture(Model):
         """
         super().__init__()
         self.prior_count = prior_count
-        self.posterior_count = prior_count
+        self.posterior_count = prior_count.copy()
         self.components = components
 
     def get_stats(self, data, weights):
@@ -78,7 +78,26 @@ class Mixture(Model):
                 component.expected_log_likelihood(data)
         return llh
 
-    def update(self, stats):
+    def update(self, stats, scale=1.):
+        """Natural gradient update the posterior parameters
+        given the sufficient statistics.
+
+        Parameters
+        ----------
+        stats : dict
+            Dictionary of sufficient statistics.
+        scale : float
+            Scaling factors of the statistics.
+
+        """
+        if self.uid not in stats:
+            return
+        
+        self.posterior_count = self.prior_count + stats[self.uid]['s0'] * scale
+        for component in self.components:
+            component.update(stats, scale)
+    
+    def natural_grad_update(self, stats, scale, lrate):
         """ Update the posterior parameters given the sufficient
         statistics.
 
@@ -86,11 +105,20 @@ class Mixture(Model):
         ----------
         stats : dict
             Dictionary of sufficient statistics.
+        scale : float
+            Scaling factors of the statistics.
+        lrate : float
+            Learning rate.
 
         """
-        self.posterior_count = self.prior_count + stats[self.uid]['s0']
+        if self.uid not in stats:
+            return
+        
+        self.posterior_count += lrate * (-self.posterior_count \
+                                         + self.prior_count \
+                                         + stats[self.uid]['s0'] * scale)
         for component in self.components:
-            component.update(stats)
+            component.natural_grad_update(stats, scale, lrate)
 
     def kl_divergence(self):
         """Kullback-Leibler divergence between the posterior and

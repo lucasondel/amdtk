@@ -38,11 +38,11 @@ class GaussianDiagCov(Model):
         super().__init__()
         self.prior_mean = mean
         self.prior_mcount = mcount
-        self.posterior_mean = mean
+        self.posterior_mean = mean.copy()
         self.posterior_mcount = mcount
         self.prior_prec = prec
         self.prior_pcount = pcount
-        self.posterior_prec = prec
+        self.posterior_prec = prec.copy()
         self.posterior_pcount = pcount
 
     @staticmethod
@@ -96,7 +96,7 @@ class GaussianDiagCov(Model):
         return .5 * (log_norm - expected_prec * \
                      (data - self.posterior_mean)**2).sum(axis=1)
 
-    def update(self, stats):
+    def update(self, stats, scale=1.):
         """ Update the posterior parameters given the sufficient
         statistics.
 
@@ -104,15 +104,16 @@ class GaussianDiagCov(Model):
         ----------
         stats : dict
             Dictionary of sufficient statistics.
+        scale : float
+            Scaling factors of the statistics.
 
         """
-        stats_0 = stats[self.uid]['s0']
-        if stats_0 > 1.:
-            stats_1 = stats[self.uid]['s1']
-            stats_2 = stats[self.uid]['s2']
-        else:
-            stats_1 = np.zeros_like(stats[self.uid]['s1'])
-            stats_2 = np.zeros_like(stats[self.uid]['s2'])
+        if self.uid not in stats:
+            return
+        
+        stats_0 = stats[self.uid]['s0'] * scale
+        stats_1 = stats[self.uid]['s1'] * scale
+        stats_2 = stats[self.uid]['s2'] * scale
         self.posterior_mcount = self.prior_mcount + stats_0
         self.posterior_mean = (self.prior_mcount * self.prior_mean + stats_1)
         self.posterior_mean /= (self.prior_mcount + stats_0)
@@ -122,7 +123,45 @@ class GaussianDiagCov(Model):
         self.posterior_prec = self.prior_prec.copy()
         self.posterior_prec += 0.5 * (-tmp + stats_2 + self.prior_mcount * \
                                       self.prior_mean**2)
+    
+    def natural_grad_update(self, stats, scale, lrate):
+        """Natural gradient update of the posterior parameters given the sufficient
+        statistics.
 
+        Parameters
+        ----------
+        stats : dict
+            Dictionary of sufficient statistics.
+        scale : float
+            Scaling factors of the statistics.
+        lrate : float
+            Learning rate.
+
+        """
+        if self.uid not in stats:
+            return
+        
+        stats_0 = stats[self.uid]['s0'] * scale
+        stats_1 = stats[self.uid]['s1'] * scale
+        stats_2 = stats[self.uid]['s2'] * scale
+            
+        self.posterior_mcount +=  lrate * (-self.posterior_mcount \
+                                           + self.prior_mcount + stats_0)
+        self.posterior_mean += lrate * (-self.posterior_mean \
+                                        + (self.prior_mcount * \
+                                           self.prior_mean + stats_1) \
+                                           / (self.prior_mcount + stats_0))
+        
+        self.posterior_pcount += lrate * (-self.posterior_pcount \
+                                          + self.prior_pcount + .5 * stats_0)
+        tmp = (self.prior_mcount * self.prior_mean + stats_1)**2
+        tmp /= self.prior_mcount + stats_0
+        update_posterior_prec = self.prior_prec.copy()
+        update_posterior_prec += 0.5 * (-tmp + stats_2 + self.prior_mcount * \
+                                        self.prior_mean**2)
+        self.posterior_prec += lrate * (-self.posterior_prec \
+                                        + update_posterior_prec)
+        
     def kl_divergence(self):
         """Kullback-Leibler divergence between the posterior and
         the prior density.

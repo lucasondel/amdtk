@@ -18,6 +18,7 @@ from .training import acc_stats
 from .training import add_stats
 from .training import remove_stats
 from .training import StandardVariationalBayes
+from .training import StochasticVariationalBayes
 
 from .phone_loop import PhoneLoop
 from .model import Model
