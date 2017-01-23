@@ -17,6 +17,7 @@ from .internal_io import write_eval_to_clusters
 from .training import acc_stats
 from .training import add_stats
 from .training import remove_stats
+from .training import log_predictive
 from .training import StandardVariationalBayes
 from .training import StochasticVariationalBayes
 
