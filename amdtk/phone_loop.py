@@ -129,15 +129,11 @@ class PhoneLoop(Model):
             Log weights.
 
         """
-        if self.dp_prior:
-            breaks = psi(self.pg1) - psi(self.pg1 + self.pg2)
-            remainders = psi(self.pg2) - psi(self.pg1 + self.pg2)
-            retval = breaks.copy()
-            for i in range(1, self.n_units):
-                retval[i] += remainders[:i].sum()
-        else:
-            retval = psi(self.posterior_count) - \
-                psi(self.posterior_count.sum())
+        breaks = psi(self.pg1) - psi(self.pg1 + self.pg2)
+        remainders = psi(self.pg2) - psi(self.pg1 + self.pg2)
+        retval = breaks.copy()
+        for i in range(1, self.n_units):
+            retval[i] += remainders[:i].sum()
         return retval
 
     def get_stats(self, data, units_stats, weights, state_weights):

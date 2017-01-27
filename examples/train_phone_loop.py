@@ -32,9 +32,10 @@ def svb_callback(args):
           'time=' + str(time), 'lower-bound=' + str(lower_bound))
 
     # If this is the end of an epoch, store the model.
-    if batch == n_batch:
+    if batch % 5 == 0 or batch == n_batch:
         tmpdir = args['tmpdir']
-        model_path = os.path.join(tmpdir, 'model_epoch' + str(epoch) + '.bin')
+        model_path = os.path.join(tmpdir, 'model_epoch' + str(epoch) + \
+                                  '_batch'+str(batch) +'.bin')
         with open(model_path, 'wb') as f:
             pickle.dump(args['model'], f)
 

@@ -121,7 +121,6 @@ def main():
                                  emissions,
                                  args.concentration,
                                  args.ins_penalty,
-                                 True,
                                  args.pruning)
 
     # Initialize the Gaussian mean's posterior.
