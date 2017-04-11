@@ -31,7 +31,7 @@ from .efd import EFDLikelihood
 
 from .inference import Inference
 from .inference import StdVBInference
-from .inference import SGAVBInference
+from .inference import StochasticVBInference
 from .inference import AdamSGAInference
 from .inference import SVAEStdSGAInference
 from .inference import SVAEAdamSGAInference

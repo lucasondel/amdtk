@@ -1,8 +1,31 @@
 
-"""Train a Phone-Loop model."""
+"""
+Train a phone-loop model.
 
-# Needed modules.
-# ----------------------------------------------------------------------------
+Copyright (C) 2017, Lucas Ondel
+
+Permission is hereby granted, free of charge, to any person
+obtaining a copy of this software and associated documentation
+files (the "Software"), to deal in the Software without
+restriction, including without limitation the rights to use, copy,
+modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT.  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+"""
+
 import argparse
 import ast
 import os
@@ -10,9 +33,10 @@ import pickle
 from ipyparallel import Client
 import amdtk
 
+DOC = "Train a phone-loop model."
+
 
 # Callback to monitor the convergence of the training.
-# ----------------------------------------------------------------------------
 def callback(args):
     epoch = args['epoch']
     lower_bound = args['objective']
@@ -22,26 +46,22 @@ def callback(args):
 
 
 # Possible training strategies.
-# ----------------------------------------------------------------------------
 training_alg = {
     'vb': amdtk.StdVBInference,
-    'svb': amdtk.SGAVBInference
+    'svb': amdtk.StochasticVBInference
 }
 
 
 def main():
     # Command line argument parsing.
-    # ------------------------------------------------------------------------
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=DOC)
 
     # Parallel environment options.
-    # ------------------------------------------------------------------------
     group = parser.add_argument_group('parallel environment')
     group.add_argument('--profile', help='ipyparallel profile name '
                        '(default: None)')
 
     # Training.
-    # ------------------------------------------------------------------------
     group = parser.add_argument_group('training')
     group.add_argument('--training', default='vb',
                        choices=training_alg.keys(),
@@ -51,7 +71,6 @@ def main():
                             'key2:val2,...}"')
 
     # Compulsory arguments.
-    # ------------------------------------------------------------------------
     parser.add_argument('stats', type=argparse.FileType('rb'),
                         help='data statistics')
     parser.add_argument('fealist', type=argparse.FileType('r'),
@@ -62,47 +81,32 @@ def main():
                         help='output trained model')
 
     # Parse the command line.
-    # ------------------------------------------------------------------------
     args = parser.parse_args()
-    
+
     # Load the data statistics.
-    # ------------------------------------------------------------------------
-    stats = pickle.load(args.stats)
+    data_stats = pickle.load(args.stats)
 
     # Connect to the ipyparallel cluster.
-    # ------------------------------------------------------------------------
     rc = Client(profile=args.profile)
     dview = rc[:]
     print('# jobs:', len(dview))
 
     # Load the list of features.
-    # ------------------------------------------------------------------------
-    segments = []
-    segments_key = {}
-    for line in args.fealist:
-            key, segment = line.strip().split()
-            segments.append(segment)
-            segments_key[segment] = key
-    segments = segments
+    segments = [fname.strip() for fname in args.fealist]
 
     # Load the model to train.
-    # ------------------------------------------------------------------------
-    ploop = pickle.load(args.model)
+    ploop = amdtk.PersistentModel.load(args.model)
 
     # Parse the training arguments.
-    # ------------------------------------------------------------------------
-    train_args = {'n_frames': stats[0]}
-    train_args = {**train_args, **ast.literal_eval(args.train_args)}
+    train_args = ast.literal_eval(args.train_args)
 
     # Train the model.
-    # ------------------------------------------------------------------------
-    print(segments)
-    training = training_alg[args.training](dview, train_args, ploop)
+    training = training_alg[args.training](dview, data_stats, train_args,
+                                           ploop)
     training.run(segments, callback)
 
     # Write the updated model on the disk.
-    # ------------------------------------------------------------------------
-    pickle.dump(ploop, args.out_model)
+    ploop.save(args.out_model)
 
 # Makes sure this script cannot be imported.
 if __name__ == '__main__':

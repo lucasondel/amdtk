@@ -52,15 +52,18 @@ class Inference(metaclass=abc.ABCMeta):
 
         """
         self.dview = dview
-        self._epochs = int(params.get('epochs', 1))
-        self._batch_size = int(params.get('batch_size', 1))
+        self.epochs = int(params.get('epochs', 1))
+        self.batch_size = int(params.get('batch_size', 1))
+        self.model = model
+        self.time_step = 0
+        self.data_stats = data_stats
 
         with self.dview.sync_imports():
             import numpy
             from amdtk import read_htk
 
     def run(self, data, callback):
-        """Run the training.
+        """Train the model.
 
         Parameters
         ----------
@@ -82,28 +85,34 @@ class Inference(metaclass=abc.ABCMeta):
 
         """
         start_time = time.time()
-        time_step = 0.
 
-        for epoch in range(self._epochs):
+        for epoch in range(self.epochs):
             # Shuffle the data to avoid cycle in the training.
             np_data = np.array(data)
             idxs = np.arange(0, len(data))
             np.random.shuffle(idxs)
             shuffled_data = np_data[idxs]
 
-            if self._batch_size < 0:
+            if self.batch_size < 0:
                 batch_size = len(data)
             else:
-                batch_size = self._batch_size
+                batch_size = self.batch_size
 
             for mini_batch in range(0, len(data), batch_size):
+                self.time_step += 1
+
                 # Index of the data mini-batch.
                 start = mini_batch
                 end = mini_batch + batch_size
 
+                # Reshaped the list of features.
+                fea_list = shuffled_data[start:end]
+                new_fea_list = [fea_list[i:i + len(self.dview)]  for i in
+                                range(0, len(fea_list), len(self.dview))]
+
                 # Update the model.
-                objective = self.train(shuffled_data[start:end], epoch + 1,
-                                       mini_batch)
+                objective = self.train(new_fea_list, epoch + 1,
+                                       self.time_step)
 
                 # Monitor the convergence.
                 callback({
@@ -115,7 +124,7 @@ class Inference(metaclass=abc.ABCMeta):
                 })
 
     @abc.abstractmethod
-    def train(self, data, epoch, mini_batch):
+    def train(self, data, epoch, time_step):
         """One update of the training process.
 
         Parameters
@@ -124,8 +133,8 @@ class Inference(metaclass=abc.ABCMeta):
             Data to train on.
         epoch : int
             Epoch of the training.
-        mini_batch : int
-            Mini-batch index for the current epoch.
+        time_step : int
+            Number of the training update.
 
         """
         pass
@@ -134,9 +143,9 @@ class Inference(metaclass=abc.ABCMeta):
 class StdVBInference(Inference):
     """Standard mean-field Variational Bayes training."""
 
-    @interactive
     @staticmethod
-    def std_vb_e_step(fea_list):
+    @interactive
+    def e_step(fea_list):
         """Jod for the standard E-step.
 
         Parameters
@@ -179,37 +188,20 @@ class StdVBInference(Inference):
         return (exp_llh, acc_stats, n_frames)
 
     def __init__(self, dview, data_stats, params, model):
-        Inference.__init__(self, data_stats, dview, params, model)
+        Inference.__init__(self, dview, data_stats, params, model)
         self.model = model
 
         # The standard VB training cannot be done on minibatches.
-        self._batch_size = -1
+        self.batch_size = -1
 
-    def train(self, fea_list, epoch, mini_batch):
-        """One update of the training process.
-
-        Parameters
-        ----------
-        model : model
-            Model to train.
-        fea_list : str
-            List of features files.
-        epoch : int
-            Epoch of the training.
-        mini_batch : int
-            Mini-batch index for the current epoch.
-
-        """
+    def train(self, fea_list, epoch, time_step):
         # Propagate the model to all the remote clients.
         self.dview.push({
             'model': self.model,
         })
 
         # Parallel accumulation of the sufficient statistics.
-        new_fea_list = [fea_list[i:i + len(self.dview)]
-                        for i in range(0, len(fea_list), len(self.dview))]
-        stats_list = \
-            self.dview.map_sync(std_vb_e_step, new_fea_list)
+        stats_list = self.dview.map_sync(StdVBInference.e_step, fea_list)
 
         # Accumulate the results from all the jobs.
         exp_llh = stats_list[0][0]
@@ -226,58 +218,28 @@ class StdVBInference(Inference):
         # Update the parameters of the model.
         self.model.vb_m_step(acc_stats)
 
-        return lower_bound / self._n_frames
+        return lower_bound / self.data_stats['count']
 
 
-class SGAVBInference(Inference):
-    """Standard SGA training."""
+class StochasticVBInference(Inference):
+    """Stochastic VB training."""
 
-    def __init__(self, dview, params, model):
-        """Initialize the training."""
-        Inference.__init__(self, dview, params, model)
+    def __init__(self, dview, data_stats, params, model):
+        Inference.__init__(self, dview, data_stats, params, model)
+        self.forgetting_rate = float(params.get('forgetting_rate', .51))
+        self.delay = float(params.get('delay', 0.))
+        self.scale = float(params.get('scale', 1.))
 
-        model.forgetting_rate = float(params.get('forgetting_rate',
-                                                 model.forgetting_rate))
-        model.delay = float(params.get('delay', model.delay))
-        model.scale = float(params.get('scale', model.scale))
-        model.n_frames = int(params.get('n_frames', model.n_frames))
-        self._time_step = 0
-        self.model = model
-
-    def train(self, fea_list, epoch, mini_batch):
-        """One update of the training process.
-
-        Parameters
-        ----------
-        model : model
-            Model to train.
-        data : numpy.ndarray
-            Data to train on.
-        epoch : int
-            Epoch of the training.
-        mini_batch : int
-            Mini-batch index for the current epoch.
-
-        """
-        self._time_step += 1
-
+    def train(self, fea_list, epoch, time_step):
         # Propagate the model to all the remote clients.
         self.dview.push({
             'model': self.model,
         })
 
-        # Compute the learning rate.
-        lrate = self.model.scale * \
-            ((self.model.delay + self._time_step)**(-self.model.forgetting_rate))
+        # Parallel accumulation of the sufficient statistics.
+        stats_list = self.dview.map_sync(StdVBInference.e_step, fea_list)
 
-        # Accumulate statistics.
-        new_fea_list = [fea_list[i:i + len(self.dview)]
-                        for i in range(0, len(fea_list), len(self.dview))]
-        stats_list = \
-            self.dview.map_sync(std_vb_e_step, new_fea_list)
-
-        # Compute the gradients.
-        print(len(stats_list))
+        # Accumulate the results from all the jobs.
         exp_llh = stats_list[0][0]
         acc_stats = stats_list[0][1]
         batch_n_frames = stats_list[0][2]
@@ -287,20 +249,19 @@ class SGAVBInference(Inference):
             batch_n_frames += new_batch_n_frames
 
         # Scale the statistics.
-        scale = self.model.n_frames / batch_n_frames
+        scale = self.data_stats['count'] / batch_n_frames
         acc_stats *= scale
+
+        # Compute the learning rate.
+        lrate = self.scale * \
+            ((self.delay + time_step)**(-self.forgetting_rate))
 
         # Estimate the lower bound.
         kl_div = self.model.kl_div_posterior_prior()
-        elbo = (scale * exp_llh - kl_div) / self.model.n_frames
+        elbo = (scale * exp_llh - kl_div) / self.data_stats['count']
 
         # Update the parameters.
-        grads = self.model.grads_from_acc_stats(acc_stats)
-        for param, grad in zip(self.model.params, grads):
-            param += lrate * grad
-
-        # Post-processing.
-        self.model.after_grad_update()
+        grads = self.model.natural_grad_update(acc_stats, lrate)
 
         return elbo
 

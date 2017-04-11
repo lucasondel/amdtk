@@ -27,12 +27,11 @@ DEALINGS IN THE SOFTWARE.
 
 import numpy as np
 from scipy.special import logsumexp
-from .model import PersistentModel
-from .efd import EFDStats
+from .efd import EFDStats, LatentEFD
 from .svae_prior import SVAEPrior
 
 
-class Mixture(PersistentModel, SVAEPrior):
+class Mixture(LatentEFD, SVAEPrior):
     """Bayesian Mixture Model.
 
     Bayesian Mixture Model with a Dirichlet prior over the weights.
@@ -40,81 +39,12 @@ class Mixture(PersistentModel, SVAEPrior):
     """
 
     def __init__(self, prior, posterior, components):
-        """Initialize the GMM.
-
-        Parameters
-        ----------
-        prior : :class:`Dirichlet`
-            Dirichlet prior of the mixture.
-        posterior : :class:`Dirichlet`
-            Dirichlet posterior of the mixture.
-        compents : list
-            List of :class:`Normal`
-
-        """
-        self.prior = prior
-        self.posterior = posterior
-        self.components = components
-
-        # matrix of the components' parameters.
-        self.comp_params = self._get_param_matrix()
+        LatentEFD.__init__(self, prior, posterior, components)
+        self.vb_post_update()
 
     def _get_param_matrix(self):
         return np.vstack([comp.posterior.grad_log_partition
                           for idx, comp in enumerate(self.components)])
-
-    def get_sufficient_stats(self, data):
-        """Sufficient statistics of GMM.
-
-        The sufficient statistics of the GMM include the ones of the
-        mixture's component appended with a '1' (for the Dirichlet
-        prior).
-
-        Parameters
-        ----------
-        data : numpy.ndarray
-            (NxD) matrix where N is the number of frames and D is the
-            dimension of a single features vector.
-
-        Returns
-        -------
-        s_stats : numpy.ndarray
-            (NxD)2 matrix of sufficient statistics. D2 is the dimension
-            of the sufficient statistics for a single features frame.
-
-        """
-        cls = self.components[0].__class__
-        normal_stats = cls.get_sufficient_stats(data)
-        return normal_stats
-
-    def update_posterior(self, acc_s_stats):
-        """Update the posterior distribution.
-
-        Parameters
-        ----------
-        acc_s_stats : numpy.ndarray
-            Accumulated sufficient statistics.
-
-        """
-        for idx, stats in enumerate(acc_s_stats[:, :-1]):
-            self.components[idx].update_posterior(stats)
-        self.posterior.natural_params = self.prior.natural_params + \
-            acc_s_stats[:, -1]
-
-    def kl_div_posterior_prior(self):
-        """Kullback-Leibler divergence between prior /posterior.
-
-        Returns
-        -------
-        kl_div : float
-            Kullback-Leibler divergence.
-
-        """
-        retval = 0.
-        retval += self.posterior.kl_div(self.prior)
-        for comp in self.components:
-            retval += comp.posterior.kl_div(comp.prior)
-        return retval
 
     # SVAEPrior interface.
     # ------------------------------------------------------------------
@@ -189,119 +119,15 @@ class Mixture(PersistentModel, SVAEPrior):
         acc_stats2 = resps.T.dot(s_stats)
         return EFDStats([acc_stats1, acc_stats2])
 
-    def grads_from_acc_stats(self, acc_stats):
-        """Compute the gradients from the accumulated statistics.
-
-        Parameters
-        ----------
-        acc_stats : :class:`EFDStats`
-            Accumulated sufficient statistics.
-
-        Returns
-        -------
-        grads : list
-            List of all the gradients.
-
-        """
-        grads = []
-        grads.append(self.prior.natural_params + acc_stats[0] \
-                     - self.posterior.natural_params)
-
-        for idx, stats in enumerate(acc_stats[1]):
-            component = self.components[idx]
-            grad = component.prior.natural_params + stats - \
-                component.posterior.natural_params
-            grads.append(grad)
-
-        return grads
-
-    # StdSGAPython interface.
-    # ------------------------------------------------------------------
-
-    def gradients(self, data):
-        """Compute the natural gradient of the VB lower bound.
-
-        Parameters
-        ----------
-        data : numpy.ndarray
-            (NxD) matrix where N is the number of frames and D is the
-            dimension of a single features vector.
-
-        Returns
-        -------
-        grads : list
-            List of gradients.
-
-        """
-        # Run the standard VB E-step.
-        log_norm, acc_stats = self.vb_e_step(data)
-
-        # Scale the statistics.
-        scale = self.n_frames / log_norm.shape[0]
-        acc_stats *= scale
-
-        # Estimate the lower bound
-        kl_div = self.kl_div_posterior_prior()
-        lower_bound = (scale * log_norm.sum() - kl_div) / self.n_frames
-
-        # Compute the (natural) gradients.
-        grads = self.grads_from_acc_stats(acc_stats)
-
-        return lower_bound, grads
-
-    def after_grad_update(self):
-        """Called after each gradient update."""
-        self.posterior.natural_params = self.params[0]
-        for idx, component in enumerate(self.components):
-            component.posterior.natural_params = self.params[idx + 1]
-        self.comp_params = self._get_param_matrix()
-
-    # Variational Bayes training.
+    # LatentEFD interface implementation.
     # ------------------------------------------------------------------
 
     def vb_e_step(self, data):
-        """E-step of the standard Variational Bayes algorithm.
-
-        Parameters
-        ----------
-        data : numpy.ndarray
-            (NxD) matrix where N is the number of frames and D is the
-            dimension of a single features vector.
-
-        Returns
-        -------
-        exp_llh : float
-            Expected value of the log-likelihood of the data given the
-            model.
-        acc_s_stats : numpy.ndarray
-            Accumulated sufficient statistics.
-        is_sufficient_stats : bool
-            Whether the given data are the sufficient statistics
-            corresponding to the model.
-
-        """
         s_stats = self.get_sufficient_stats(data)
         log_norm, resps, model_data = self.get_resps(s_stats)
-        acc_stats1 = resps.sum(axis=0)
-
-        # Accumulate the statistics.
         return log_norm, self.accumulate_stats(s_stats, resps, model_data)
 
-    def vb_m_step(self, acc_stats):
-        """M-step of the standard Variational Bayes algorithm.
-
-        Parameters
-        ----------
-        acc_s_stats : numpy.ndarray
-            Accumulated sufficient statistics.
-
-        """
-        self.posterior.natural_params = self.prior.natural_params + \
-            acc_stats[0]
-
-        for idx, stats in enumerate(acc_stats[1]):
-            self.components[idx].update_posterior(stats)
-
+    def vb_post_update(self, acc_stats):
         self.comp_params = self._get_param_matrix()
 
     # PersistentModel interface implementation.
