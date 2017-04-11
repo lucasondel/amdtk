@@ -8,4 +8,4 @@ setup(name='amdtk',
       author='Lucas Ondel',
       author_email='lucas.ondel@gmail.com',
       packages=['amdtk'],
-      license='BSD')
+      license='MIT')

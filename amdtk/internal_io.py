@@ -87,7 +87,7 @@ def read_htk(path, infos=False):
         tokens = path.split('[')
         path = tokens[0]
         timing = tokens[1]
-        start, end = timing.strip('[]').split(':')
+        start, end = timing.strip('[]').split(',')
         start = int(start)
         end = int(end)
 
