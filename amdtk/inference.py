@@ -4,45 +4,46 @@ Training algorithms vor various models.
 
 Copyright (C) 2017, Lucas Ondel
 
-Permission is hereby granted, free of charge, to any person obtaining a
-copy of this software and associated documentation files (the
-"Software"), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish,
-distribute, sublicense, and/or sell copies of the Software, and to
-permit persons to whom the Software is furnished to do so, subject to
-the following conditions:
+Permission is hereby granted, free of charge, to any person
+obtaining a copy of this software and associated documentation
+files (the "Software"), to deal in the Software without
+restriction, including without limitation the rights to use, copy,
+modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included
-in all copies or substantial portions of the Software.
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT.  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
 
 """
 
 import abc
 import time
 import numpy as np
-import theano
-import theano.tensor as T
 from ipyparallel.util import interactive
 
 
 class Inference(metaclass=abc.ABCMeta):
     """Base class for the training algorithms."""
 
-    def __init__(self, dview, params, model):
+    def __init__(self, dview, data_stats, params, model):
         """Initialize the training algorithm.
 
         Parameters
         ----------
         dview : object
             Remote client objects to parallelize the training.
+        data_stats : object
+            Statistics of the training data.
         params : dictionary
             Settings of the training. The settings are training
             dependent.
@@ -53,9 +54,9 @@ class Inference(metaclass=abc.ABCMeta):
         self.dview = dview
         self._epochs = int(params.get('epochs', 1))
         self._batch_size = int(params.get('batch_size', 1))
-        
+
         with self.dview.sync_imports():
-            import numpy 
+            import numpy
             from amdtk import read_htk
 
     def run(self, data, callback):
@@ -75,8 +76,8 @@ class Inference(metaclass=abc.ABCMeta):
               * iteration : current iteration (int)
               * batch : current mini-bacth index (int)
               * n_batch : total number of mini-batch (int)
-              * time : elapsed time since the beginning of the training.
-                       (float)
+              * time : elapsed time since the beginning of the
+                       training (float).
               * objective : current value of the objective function.
 
         """
@@ -130,47 +131,56 @@ class Inference(metaclass=abc.ABCMeta):
         pass
 
 
-@interactive
-def std_vb_e_step(fea_list):    
-    """Jod for the standard E-step.
-    
-    Parameters
-    ----------
-    fea_list : list
-        List of features file.
-
-    Returns
-    -------
-    exp_llh : float
-        Accumulated log-likelihood.
-    acc_stats : object
-        Accumulated sufficient statistics.
-
-    """
-    exp_llh = 0.
-    acc_stats = None
-    n_frames = 0
-    for fea_file in fea_list:
-        data = read_htk(fea_file)
-        log_norm, new_acc_stats = model.vb_e_step(data)
-        n_frames += len(data)
-        exp_llh += numpy.sum(log_norm)
-        if acc_stats is None:
-            acc_stats = new_acc_stats
-        else:
-            acc_stats += new_acc_stats
-
-    return (exp_llh, acc_stats, n_frames)
-
-
 class StdVBInference(Inference):
     """Standard mean-field Variational Bayes training."""
 
-    def __init__(self, dview, params, model):
-        """Initialize the standard Variational Bayes training."""
-        Inference.__init__(self, dview, params, model)
+    @interactive
+    @staticmethod
+    def std_vb_e_step(fea_list):
+        """Jod for the standard E-step.
+
+        Parameters
+        ----------
+        fea_list : list
+            List of features file.
+
+        Returns
+        -------
+        exp_llh : float
+            Accumulated log-likelihood.
+        acc_stats : object
+            Accumulated sufficient statistics.
+        n_frames : int
+            Number of frames in the batch.
+
+        """
+        # Initialize the returned values.
+        exp_llh = 0.
+        acc_stats = None
+        n_frames = 0
+
+        # For each features file...
+        for fea_file in fea_list:
+            # Load the features.
+            data = read_htk(fea_file)
+
+            # Get the accumulated sufficient statistics for the
+            # given set of features.
+            log_norm, new_acc_stats = model.vb_e_step(data)
+
+            # Global accumulators.
+            n_frames += len(data)
+            exp_llh += numpy.sum(log_norm)
+            if acc_stats is None:
+                acc_stats = new_acc_stats
+            else:
+                acc_stats += new_acc_stats
+
+        return (exp_llh, acc_stats, n_frames)
+
+    def __init__(self, dview, data_stats, params, model):
+        Inference.__init__(self, data_stats, dview, params, model)
         self.model = model
-        model.n_frames = int(params.get('n_frames', model.n_frames))
 
         # The standard VB training cannot be done on minibatches.
         self._batch_size = -1
@@ -195,17 +205,18 @@ class StdVBInference(Inference):
             'model': self.model,
         })
 
-        # Accumulate statistics.
-        new_fea_list = [fea_list[i:i + len(self.dview)] 
+        # Parallel accumulation of the sufficient statistics.
+        new_fea_list = [fea_list[i:i + len(self.dview)]
                         for i in range(0, len(fea_list), len(self.dview))]
         stats_list = \
             self.dview.map_sync(std_vb_e_step, new_fea_list)
 
+        # Accumulate the results from all the jobs.
         exp_llh = stats_list[0][0]
         acc_stats = stats_list[0][1]
         for new_exp_llh, new_acc_stats, new_batch_n_frames in stats_list[1:]:
             exp_llh += new_exp_llh
-            acc_stats += new_acc_stats 
+            acc_stats += new_acc_stats
 
         # Compute the lower-bound of the data given the model. Needs
         # to be done before we update the parameters.
@@ -215,7 +226,7 @@ class StdVBInference(Inference):
         # Update the parameters of the model.
         self.model.vb_m_step(acc_stats)
 
-        return lower_bound / self.model.n_frames
+        return lower_bound / self._n_frames
 
 
 class SGAVBInference(Inference):
@@ -254,13 +265,13 @@ class SGAVBInference(Inference):
         self.dview.push({
             'model': self.model,
         })
-        
+
         # Compute the learning rate.
         lrate = self.model.scale * \
             ((self.model.delay + self._time_step)**(-self.model.forgetting_rate))
 
         # Accumulate statistics.
-        new_fea_list = [fea_list[i:i + len(self.dview)] 
+        new_fea_list = [fea_list[i:i + len(self.dview)]
                         for i in range(0, len(fea_list), len(self.dview))]
         stats_list = \
             self.dview.map_sync(std_vb_e_step, new_fea_list)
@@ -272,13 +283,13 @@ class SGAVBInference(Inference):
         batch_n_frames = stats_list[0][2]
         for new_exp_llh, new_acc_stats, new_batch_n_frames in stats_list[1:]:
             exp_llh += new_exp_llh
-            acc_stats += new_acc_stats 
+            acc_stats += new_acc_stats
             batch_n_frames += new_batch_n_frames
 
         # Scale the statistics.
-        scale = self.model.n_frames / batch_n_frames 
+        scale = self.model.n_frames / batch_n_frames
         acc_stats *= scale
-        
+
         # Estimate the lower bound.
         kl_div = self.model.kl_div_posterior_prior()
         elbo = (scale * exp_llh - kl_div) / self.model.n_frames

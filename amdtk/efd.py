@@ -25,6 +25,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
 import abc
+from .model import PersistentModel
 
 
 class EFDStats(object):
@@ -55,7 +56,7 @@ class EFDStats(object):
         return self
 
 
-class EFDPrior(metaclass=abc.ABCMeta):
+class EFDPrior(PersistentModel, metaclass=abc.ABCMeta):
     """Abstract base class for a prior from the EFD."""
 
     # Abstract interface.
@@ -121,11 +122,12 @@ class EFDPrior(metaclass=abc.ABCMeta):
         return retval
 
 
-class EFDLikelihood(metaclass=abc.ABCMeta):
+class EFDLikelihood(PersistentModel, metaclass=abc.ABCMeta):
     """Abstract base class for a likelihood from the EFD."""
 
-    # Abstract interface.
-    # ------------------------------------------------------------------
+    def __init__(self, prior, posterior):
+        self._prior = prior
+        self._posterior = posterior
 
     @abc.abstractstaticmethod
     def get_sufficient_stats(data):
@@ -146,15 +148,26 @@ class EFDLikelihood(metaclass=abc.ABCMeta):
         """
         pass
 
-    @abc.abstractproperty
+    @property
     def prior(self):
-        """Conjugate prior distribution."""
-        pass
+        """Conjugate prior."""
+        return self._prior
 
-    @abc.abstractproperty
+    @prior.setter
+    def prior(self, value):
+        self._prior = value
+
+    @property
     def posterior(self):
-        """Conjugate posterior distribution."""
-        pass
+        """Conjugate posterior."""
+        return self._posterior
+
+    @posterior.setter
+    def posterior(self, value):
+        self._posterior = value
+
+    # Abstract interface.
+    # -----------------------------------------------------------------
 
     def update_posterior(self, acc_s_stats):
         """Update the posterior distribution.
@@ -165,6 +178,33 @@ class EFDLikelihood(metaclass=abc.ABCMeta):
             Accumulated sufficient statistics.
 
         """
-        self.posterior.natural_params = self.prior.natural_params + acc_s_stats
+        self.posterior.natural_params = self.prior.natural_params
+        self.posterior.natural_params += acc_s_stats
 
-    # ------------------------------------------------------------------
+    # PersistentModel interface implementation.
+    # -----------------------------------------------------------------
+
+    def to_dict(self):
+        return {
+            'class': self.__class__,
+            'prior_class': self.prior.__class__,
+            'prior_data': self.prior.to_dict(),
+            'posterior_class': self.posterior.__class__,
+            'posterior_data': self.posterior.to_dict()
+        }
+
+    @staticmethod
+    def load_from_dict(model_data):
+        model = model_data['class'].__new__(model_data['class'])
+        prior_cls = model_data['prior_class']
+        prior_data = model_data['prior_data']
+        model.prior = prior_cls.load_from_dict(prior_data)
+
+        posterior_cls = model_data['prior_class']
+        posterior_data = model_data['posterior_data']
+        model.posterior = posterior_cls.load_from_dict(posterior_data)
+
+        return model
+
+    # -----------------------------------------------------------------
+

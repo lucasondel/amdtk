@@ -3,24 +3,25 @@ Implementation of a Normal-Wishart density prior.
 
 Copyright (C) 2017, Lucas Ondel
 
-Permission is hereby granted, free of charge, to any person obtaining a
-copy of this software and associated documentation files (the
-"Software"), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish,
-distribute, sublicense, and/or sell copies of the Software, and to
-permit persons to whom the Software is furnished to do so, subject to
-the following conditions:
+Permission is hereby granted, free of charge, to any person
+obtaining a copy of this software and associated documentation
+files (the "Software"), to deal in the Software without
+restriction, including without limitation the rights to use, copy,
+modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included
-in all copies or substantial portions of the Software.
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT.  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
 
 """
 
@@ -90,30 +91,25 @@ class NormalWishart(EFDPrior):
                 borrow=True
         )
         self._nparams = [np1, np2, np3, np4]
+
+        # Compile the model.
+        self._build()
+
+    def _build(self):
         self._natural_params = np.hstack([
-            np1.get_value().flatten(),
-            np2.get_value(),
-            np3.get_value(),
-            np4.get_value()
+            self._nparams[0].get_value(),
+            self._nparams[1].get_value(),
+            self._nparams[2].get_value(),
+            self._nparams[3].get_value()
         ])
 
-        # Symbolic expression of the log-partition function.
-        idxs = np.arange(self.dim) + 1
-        W = T.nlinalg.matrix_inverse(np1 - (1./np3) * T.outer(np2, np2))
-        log_Z = .5 * (np4 + self.dim) * T.log(T.nlinalg.det(W))
-        log_Z += .5 * (np4 + self.dim) * self.dim * np.log(2)
-        log_Z += .5 * self.dim * (self.dim - 4)
-        log_Z += T.sum(T.gammaln(.5 * (np4 + self.dim + 1 - idxs)))
-        log_Z += -.5 * self.dim * T.log(np3)
-
-        # Log-partition function and its gradient.
-        self._log_partition_func = theano.function([], log_Z)
+        log_Z, self._log_partition_func = \
+            NormalWishart._get_log_partition_func(self._nparams)
         self._log_partition = self._log_partition_func()
 
-        gradients = T.grad(log_Z, self._nparams)
-        self._grad_log_partition_func = theano.function(
-            [], outputs=gradients
-        )
+
+        self._grad_log_partition_func = \
+            NormalWishart._get_grad_log_partition_func(log_Z, self._nparams)
         grads = self._grad_log_partition_func()
         self._grad_log_partition = np.hstack([
             grads[0].flatten(),
@@ -122,7 +118,51 @@ class NormalWishart(EFDPrior):
             grads[3]
         ])
 
-    # EFDPrior interface.
+    @staticmethod
+    def _get_log_partition_func(dim, nparams):
+        np1, np2, np3, np4 = nparams
+        idxs = np.arange(dim) + 1
+        W = T.nlinalg.matrix_inverse(np1 - (1./np3) * T.outer(np2, np2))
+        log_Z = .5 * (np4 + dim) * T.log(T.nlinalg.det(W))
+        log_Z += .5 * (np4 + dim) * dim * np.log(2)
+        log_Z += .5 * dim * (dim - 4)
+        log_Z += T.sum(T.gammaln(.5 * (np4 + dim + 1 - idxs)))
+        log_Z += -.5 * dim * T.log(np3)
+
+        return log_Z, theano.function([], log_Z)
+
+    @staticmethod
+    def _get_grad_log_partition_func(log_Z, nparams):
+        gradients = T.grad(log_Z, nparams)
+        return theano.function([], outputs=gradients)
+
+    # PersistentModel interface implementation.
+    # ------------------------------------------------------------------
+
+    def to_dict(self):
+        return {
+            'dim': self.dim,
+            'np1': self._nparams[0].get_value(),
+            'np2': self._nparams[1].get_value(),
+            'np3': self._nparams[2].get_value(),
+            'np4': self._nparams[3].get_value(),
+        }
+
+    @staticmethod
+    def load_from_dict(model_data):
+        model = NormalWishart.__new__(NormalWishart)
+        dim = model_data['dim']
+        np1 = theano.shared(model_data['np1'], borrow=True)
+        np2 = theano.shared(model_data['np2'], borrow=True)
+        np3 = theano.shared(model_data['np3'], borrow=True)
+        np4 = theano.shared(model_data['np4'], borrow=True)
+        model.dim = dim
+        model._nparams = [np1, np2, np3, np4]
+        model._build()
+
+        return model
+
+    # EFDPrior interface implementation.
     # ------------------------------------------------------------------
 
     @property
@@ -157,3 +197,4 @@ class NormalWishart(EFDPrior):
         return self._grad_log_partition
 
     # ------------------------------------------------------------------
+

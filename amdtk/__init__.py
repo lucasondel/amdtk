@@ -23,6 +23,8 @@ from .training import StochasticVariationalBayes
 
 from .dirichlet import Dirichlet
 
+from .model import PersistentModel
+
 from .efd import EFDStats
 from .efd import EFDPrior
 from .efd import EFDLikelihood
@@ -47,8 +49,6 @@ from .phone_loop import PhoneLoop
 
 from .sga_training import StdSGATheano
 from .sga_training import AdamSGATheano
-from .sga_training import StdSGAPython
-from .sga_training import AdamSGAPython
 
 from .svae_prior import SVAEPrior
 

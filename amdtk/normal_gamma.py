@@ -3,24 +3,25 @@ Implementation of a Normal-Gamma density prior.
 
 Copyright (C) 2017, Lucas Ondel
 
-Permission is hereby granted, free of charge, to any person obtaining a
-copy of this software and associated documentation files (the
-"Software"), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish,
-distribute, sublicense, and/or sell copies of the Software, and to
-permit persons to whom the Software is furnished to do so, subject to
-the following conditions:
+Permission is hereby granted, free of charge, to any person
+obtaining a copy of this software and associated documentation
+files (the "Software"), to deal in the Software without
+restriction, including without limitation the rights to use, copy,
+modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included
-in all copies or substantial portions of the Software.
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT.  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
 
 """
 
@@ -92,30 +93,65 @@ class NormalGamma(EFDPrior):
                 borrow=True
         )
         self._nparams = [np1, np2, np3, np4]
+
+        # Compile the model.
+        self._build()
+
+    def _build(self):
         self._natural_params = np.hstack([
-            np1.get_value(),
-            np2.get_value(),
-            np3.get_value(),
-            np4.get_value()
+            self._nparams[0].get_value(),
+            self._nparams[1].get_value(),
+            self._nparams[2].get_value(),
+            self._nparams[3].get_value()
         ])
 
-        # Symbolic expression of the log-partition function.
+        log_Z, self._log_partition_func = \
+            NormalGamma._get_log_partition_func(self._nparams)
+        self._log_partition = self._log_partition_func()
+
+
+        self._grad_log_partition_func = \
+            NormalGamma._get_grad_log_partition_func(log_Z, self._nparams)
+        self._grad_log_partition = self._grad_log_partition_func()
+
+    @staticmethod
+    def _get_log_partition_func(nparams):
+        np1, np2, np3, np4 = nparams
         log_Z = T.gammaln(.5 * (np4 + 1))
         log_Z += - .5 * (np4 + 1) * T.log(.5 * (np1 - (np2 ** 2) / np3))
         log_Z += -.5 * T.log(np3)
         log_Z = T.sum(log_Z)
+        return log_Z, theano.function([], log_Z)
 
-        # Log-partition function and its gradient.
-        self._log_partition_func = theano.function([], log_Z)
-        self._log_partition = self._log_partition_func()
+    @staticmethod
+    def _get_grad_log_partition_func(log_Z, nparams):
+        gradients = T.grad(log_Z, nparams)
+        return theano.function([], outputs=T.concatenate(gradients))
 
-        gradients = T.grad(log_Z, self._nparams)
-        self._grad_log_partition_func = theano.function(
-            [], outputs=T.concatenate(gradients)
-        )
-        self._grad_log_partition = self._grad_log_partition_func()
+    # PersistentModel interface implementation.
+    # ------------------------------------------------------------------
 
-    # EFDPrior interface.
+    def to_dict(self):
+        return {
+            'np1': self._nparams[0].get_value(),
+            'np2': self._nparams[1].get_value(),
+            'np3': self._nparams[2].get_value(),
+            'np4': self._nparams[3].get_value(),
+        }
+
+    @staticmethod
+    def load_from_dict(model_data):
+        model = NormalGamma.__new__(NormalGamma)
+        np1 = theano.shared(model_data['np1'], borrow=True)
+        np2 = theano.shared(model_data['np2'], borrow=True)
+        np3 = theano.shared(model_data['np3'], borrow=True)
+        np4 = theano.shared(model_data['np4'], borrow=True)
+        model._nparams = [np1, np2, np3, np4]
+        model._build()
+
+        return model
+
+    # EFDPrior interface implementation.
     # ------------------------------------------------------------------
 
     @property
@@ -144,3 +180,4 @@ class NormalGamma(EFDPrior):
         return self._grad_log_partition
 
     # ------------------------------------------------------------------
+

@@ -3,35 +3,36 @@ Main class of the mixture model.
 
 Copyright (C) 2017, Lucas Ondel
 
-Permission is hereby granted, free of charge, to any person obtaining a
-copy of this software and associated documentation files (the
-"Software"), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish,
-distribute, sublicense, and/or sell copies of the Software, and to
-permit persons to whom the Software is furnished to do so, subject to
-the following conditions:
+Permission is hereby granted, free of charge, to any person
+obtaining a copy of this software and associated documentation
+files (the "Software"), to deal in the Software without
+restriction, including without limitation the rights to use, copy,
+modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included
-in all copies or substantial portions of the Software.
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT.  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
 
 """
 
 import numpy as np
 from scipy.special import logsumexp
+from .model import PersistentModel
 from .efd import EFDStats
 from .svae_prior import SVAEPrior
-from .sga_training import StdSGAPython, AdamSGAPython
 
 
-class Mixture(SVAEPrior, StdSGAPython, AdamSGAPython):
+class Mixture(PersistentModel, SVAEPrior):
     """Bayesian Mixture Model.
 
     Bayesian Mixture Model with a Dirichlet prior over the weights.
@@ -55,16 +56,8 @@ class Mixture(SVAEPrior, StdSGAPython, AdamSGAPython):
         self.posterior = posterior
         self.components = components
 
-        # List of parameters to update.
-        self.params = [posterior.natural_params]
-        for component in self.components:
-            self.params.append(component.posterior.natural_params)
-
-        # Matrix of the components' parameters.
+        # matrix of the components' parameters.
         self.comp_params = self._get_param_matrix()
-
-        StdSGAPython.__init__(self)
-        AdamSGAPython.__init__(self)
 
     def _get_param_matrix(self):
         return np.vstack([comp.posterior.grad_log_partition
@@ -311,4 +304,43 @@ class Mixture(SVAEPrior, StdSGAPython, AdamSGAPython):
 
         self.comp_params = self._get_param_matrix()
 
+    # PersistentModel interface implementation.
+    # -----------------------------------------------------------------
+
+    def to_dict(self):
+        return {
+            'prior_class': self.prior.__class__,
+            'prior_data': self.prior.to_dict(),
+            'posterior_class': self.posterior.__class__,
+            'posterior_data': self.posterior.to_dict(),
+            'components_class': [comp.__class__ for comp in self.components],
+            'components_data': [comp.to_dict() for comp in self.components]
+        }
+
+    @staticmethod
+    def load_from_dict(model_data):
+        model = Mixture.__new__(Mixture)
+
+        prior_cls = model_data['prior_class']
+        prior_data = model_data['prior_data']
+        model.prior = prior_cls.load_from_dict(prior_data)
+
+        posterior_cls = model_data['posterior_class']
+        posterior_data = model_data['posterior_data']
+        model.posterior = posterior_cls.load_from_dict(posterior_data)
+
+        components_cls = model_data['components_class']
+        components_data = model_data['components_data']
+        components = []
+        for idx in mixture(len(components_cls)):
+            component = \
+                components_cls[idx].load_from_dict(components_data[idx])
+            components.append(component)
+        model.components = components
+
+        model.comp_params = self._get_param_matrix()
+
+        return model
+
     # ------------------------------------------------------------------
+

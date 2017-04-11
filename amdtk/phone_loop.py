@@ -26,12 +26,12 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import numpy as np
 from scipy.special import logsumexp
+from .model import PersistentModel
 from .efd import EFDStats
 from .svae_prior import SVAEPrior
-from .sga_training import StdSGAPython, AdamSGAPython
 
 
-class PhoneLoop(SVAEPrior, StdSGAPython, AdamSGAPython):
+class PhoneLoop(PersistentModel, SVAEPrior):
     """Bayesian Phone Loop.
 
     Bayesian Phone Loop with a Dirichlet prior over the weights.
@@ -96,17 +96,9 @@ class PhoneLoop(SVAEPrior, StdSGAPython, AdamSGAPython):
             PhoneLoop.__log_transition_matrix(self.n_units, self.n_states,
                                               weights)
 
-        self._prepare()
+        self._build()
 
-        # List of parameters to update.
-        self.params = [posterior.natural_params]
-        for component in self.components:
-            self.params.append(component.posterior.natural_params)
-
-        StdSGAPython.__init__(self)
-        AdamSGAPython.__init__(self)
-
-    def _prepare(self):
+    def _build(self):
         # Update the expected value of the parameters of the Gaussian
         # components.
         values = np.vstack(
@@ -406,7 +398,7 @@ class PhoneLoop(SVAEPrior, StdSGAPython, AdamSGAPython):
         self.posterior.natural_params = self.params[0]
         for idx, component in enumerate(self.components):
             component.posterior.natural_params = self.params[idx + 1]
-        self._prepare()
+        self._build()
 
     # Variational Bayes training.
     # ------------------------------------------------------------------
@@ -451,6 +443,55 @@ class PhoneLoop(SVAEPrior, StdSGAPython, AdamSGAPython):
             acc_stats[0]
         for idx, stats in enumerate(acc_stats[1]):
             self.components[idx].update_posterior(stats)
-        self._prepare()
+        self._build()
+
+    # PersistentModel interface implementation.
+    # -----------------------------------------------------------------
+
+    def to_dict(self):
+        return {
+            'prior_class': self.prior.__class__,
+            'prior_data': self.prior.to_dict(),
+            'posterior_class': self.posterior.__class__,
+            'posterior_data': self.posterior.to_dict(),
+            'components_class': [comp.__class__ for comp in self.components],
+            'components_data': [comp.to_dict() for comp in self.components],
+            'n_units': self.n_units,
+            'n_states': self.n_states,
+            'log_trans_mat': self.log_trans_mat,
+            'init_states': self.init_states,
+            'final_states': self.final_states
+        }
+
+    @staticmethod
+    def load_from_dict(model_data):
+        model = PhoneLoop.__new__(PhoneLoop)
+
+        prior_cls = model_data['prior_class']
+        prior_data = model_data['prior_data']
+        model.prior = prior_cls.load_from_dict(prior_data)
+
+        posterior_cls = model_data['posterior_class']
+        posterior_data = model_data['posterior_data']
+        model.posterior = posterior_cls.load_from_dict(posterior_data)
+
+        components_cls = model_data['components_class']
+        components_data = model_data['components_data']
+        components = []
+        for idx in range(len(components_cls)):
+            component = \
+                components_cls[idx].load_from_dict(components_data[idx])
+            components.append(component)
+        model.components = components
+
+        model.n_units = model_data['n_units']
+        model.n_states = model_data['n_states']
+        model.log_trans_mat = model_data['log_trans_mat']
+        model.init_states = model_data['init_states']
+        model.final_states = model_data['final_states']
+
+        model._build()
+
+        return model
 
     # ------------------------------------------------------------------
