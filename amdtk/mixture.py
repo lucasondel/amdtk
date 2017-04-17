@@ -127,7 +127,7 @@ class Mixture(LatentEFD, SVAEPrior):
         log_norm, resps, model_data = self.get_resps(s_stats)
         return log_norm, self.accumulate_stats(s_stats, resps, model_data)
 
-    def vb_post_update(self, acc_stats):
+    def vb_post_update(self):
         self.comp_params = self._get_param_matrix()
 
     # PersistentModel interface implementation.
@@ -158,13 +158,13 @@ class Mixture(LatentEFD, SVAEPrior):
         components_cls = model_data['components_class']
         components_data = model_data['components_data']
         components = []
-        for idx in mixture(len(components_cls)):
+        for idx in range(len(components_cls)):
             component = \
                 components_cls[idx].load_from_dict(components_data[idx])
             components.append(component)
         model.components = components
 
-        model.comp_params = self._get_param_matrix()
+        model.vb_post_update()
 
         return model
 

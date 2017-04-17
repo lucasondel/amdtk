@@ -1,41 +1,46 @@
+
 """
 Variational Auto-Encoder.
 
 Copyright (C) 2017, Lucas Ondel
 
-Permission is hereby granted, free of charge, to any person obtaining a
-copy of this software and associated documentation files (the
-"Software"), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish,
-distribute, sublicense, and/or sell copies of the Software, and to
-permit persons to whom the Software is furnished to do so, subject to
-the following conditions:
+Permission is hereby granted, free of charge, to any person
+obtaining a copy of this software and associated documentation
+files (the "Software"), to deal in the Software without
+restriction, including without limitation the rights to use, copy,
+modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included
-in all copies or substantial portions of the Software.
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT.  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
 
 """
 
 import abc
+import pickle
 import numpy as np
 import theano
 import theano.tensor as T
+from .model import PersistentModel
 from .mlp_utils import MLPGaussian
-from .sga_training import StdSGATheano, AdamSGATheano
+from .sga_training import AdamSGATheano
 
 
 class MLPEncoder(MLPGaussian):
     """Encoding MLP for the VAE."""
 
-    def __init__(self, dim_fea, dim_latent, n_layers, n_units, activation):
+    def __init__(self, dim_fea, dim_latent, n_layers, n_units, activation,
+                 log_var_prior, non_informative_prior=False):
         """Initialize a MLP.
 
         Parameters
@@ -52,14 +57,23 @@ class MLPEncoder(MLPGaussian):
             Non-linear activation.
 
         """
+        self.dim_fea = dim_fea
         self.dim_latent = dim_latent
+        self.n_layers = n_layers
+        self.n_units = n_units
+        self.activation = activation
+        self.log_var_prior = log_var_prior
+        self.non_informative_prior = non_informative_prior
 
+        self._build()
+
+    def _build(self):
         # Input to the encoder.
         self.input = T.matrix('x', dtype=theano.config.floatX)
 
         # Create the MLP Gaussian structure.
-        MLPGaussian.__init__(self, self.input, dim_fea, dim_latent, n_layers,
-                             n_units, activation)
+        MLPGaussian.__init__(self, self.input, self.dim_fea, self.dim_latent,
+                             self.n_layers, self.n_units, self.activation)
 
         # Noise variable for the reparameterization trick.
         if "gpu" in theano.config.device:
@@ -73,17 +87,21 @@ class MLPEncoder(MLPGaussian):
 
         # KL divergence between the posterior and the prior distribution over
         # the latent variable.
-        self.kl_div = .5 * T.sum(-1 - self.log_var + T.exp(self.log_var) +
-                                 self.mean**2, axis=1)
-        self.kl_div_func = theano.function(
-            inputs=[self.input],
-            outputs=self.kl_div
-        )
+        if not self.non_informative_prior:
+            #self.kl_div = .5 * T.sum(-1 - self.log_var + T.exp(self.log_var) +
+            #                         self.mean**2, axis=1)
+            var_prior = np.exp(self.log_var_prior)
+            var = T.exp(self.log_var)
+            self.kl_div = .5 * (self.log_var_prior - self.log_var)
+            self.kl_div += .5 * (self.mean**2) / var_prior
+            self.kl_div += .5 * ((var / var_prior) - 1)
+            self.kl_div = T.sum(self.kl_div, axis=1)
+        else:
+            # In this case this is just the negative entropy of the
+            # posterior.
+            self.kl_div = -.5 * T.sum(np.log(2 * np.pi + self.log_var + 1),
+                                     axis=1)
 
-        self.encode = theano.function(
-            inputs=[self.input],
-            outputs=self.output
-        )
 
 
 class MLPDecoder(MLPGaussian):
@@ -109,13 +127,24 @@ class MLPDecoder(MLPGaussian):
             Non-linear activation.
 
         """
-        # Create the MLP Gaussian structure.
-        MLPGaussian.__init__(self, encoder.output, dim_latent, dim_fea,
-                             n_layers, n_units, activation)
+        self.encoder = encoder
+        self.dim_fea = dim_fea
+        self.dim_latent = dim_latent
+        self.n_layers = n_layers
+        self.n_units = n_units
+        self.activation = activation
 
-        # Log-likelihood.
-        self.llh = T.sum(-.5 * (np.log(2 * np.pi) + self.log_var +
-                         ((encoder.input - self.mean)**2) /
+        self._build()
+
+    def _build(self):
+        # Create the MLP Gaussian structure.
+        MLPGaussian.__init__(self, self.encoder.output, self.dim_latent,
+                             self.dim_fea, self.n_layers, self.n_units,
+                             self.activation)
+
+        # Log-likelihood (up to a constant).
+        self.llh = T.sum(-.5 * (self.log_var +
+                         ((self.encoder.input - self.mean)**2) /
                          T.exp(self.log_var)),
                          axis=1)
 
@@ -127,18 +156,22 @@ class MLPDecoder(MLPGaussian):
         self.eps = srng.normal(self.mean.shape)
 
         # Decoded value.
-        self.output = self.mean + T.exp(.5 * self.log_var) * self.eps
+        self.output = self.mean + 0 * T.exp(.5 * self.log_var) * self.eps
 
 
-class VAE(StdSGATheano, AdamSGATheano):
+class VAE(PersistentModel, AdamSGATheano):
     """Variational Auto-Encoder."""
 
-    def __init__(self, dim_fea, dim_latent, n_layers, n_units,
-                 activation='relu'):
+    def __init__(self, mean, precision, dim_fea, dim_latent, n_layers, n_units,
+                 activation, log_var_prior, non_informative_prior=False):
         """Initialize a VAE.
 
         Parameters
         ----------
+        mean : numpy.ndarray
+            Mean of the data set.
+        precision : numpy.ndarray
+            Precision of the data set.
         dim_fea : int
             Dimension of the input features.
         dim_latent : int
@@ -151,59 +184,145 @@ class VAE(StdSGATheano, AdamSGATheano):
             Non-linear activation.
 
         """
+        self.dim_fea = dim_fea
+        self.dim_latent = dim_latent
+        self.n_layers = n_layers
+        self.n_units = n_units
+        self.activation = activation
+        self.log_var_prior = log_var_prior
+        self.non_informative_prior = non_informative_prior
+
+        self._build()
+
+        # Magic initialization ! This initialization seems to work
+        # well when the featurea are whitened.
+        values = np.random.normal(0., 1, (n_units, dim_latent))
+        values = np.asarray(values, dtype=theano.config.floatX)
+        self.encoder.mean_layer.params[0].set_value(values)
+        values = np.asarray(np.zeros(dim_latent) -5., dtype=theano.config.floatX)
+        self.encoder.log_var_layer.params[1].set_value(values)
+
+        # Specific initialization of the bias (log-variance).
+        #values = np.random.normal(0., .1, (n_units, dim_fea))
+        #values = np.asarray(values, dtype=theano.config.floatX)
+        #self.decoder.mean_layer.params[0].set_value(values)
+        #values = np.asarray(mean, dtype=theano.config.floatX)
+        #self.decoder.mean_layer.params[1].set_value(values)
+        values = np.asarray(-np.ones_like(precision)*3, dtype=theano.config.floatX)
+        self.decoder.log_var_layer.params[1].set_value(values)
+
+    def _build(self):
         # Encoding network.
-        self.encoder = MLPEncoder(dim_fea, dim_latent, n_layers, n_units,
-                                  activation)
-
-        # Decoding network.
-        self.decoder = MLPDecoder(self.encoder, dim_fea, dim_latent, n_layers,
-                                  n_units, activation)
-
-        # For debugging.
-        self.sample = theano.function(
-            inputs=[self.encoder.input],
-            outputs=self.decoder.output
+        self.encoder = MLPEncoder(
+            self.dim_fea,
+            self.dim_latent,
+            self.n_layers,
+            self.n_units,
+            self.activation,
+            self.log_var_prior,
+            self.non_informative_prior
         )
 
-        # Lower bound of the log-likelihood.
+        # Decoding network.
+        self.decoder = MLPDecoder(
+            self.encoder,
+            self.dim_fea,
+            self.dim_latent,
+            self.n_layers,
+            self.n_units,
+            self.activation
+        )
+
+        # Utilities..
+        self.encode = theano.function([
+            self.encoder.input],
+            outputs=self.encoder.output
+        )
+        self.decode = theano.function([
+            self.encoder.input],
+            outputs=self.decoder.output
+        )
+        self.kl = theano.function([
+            self.encoder.input],
+            outputs=self.encoder.kl_div
+        )
+        self.llh = theano.function([
+            self.encoder.input],
+            outputs=self.decoder.llh
+        )
+
+        # Lower bound. Note that because we use the accumulated
+        # log-likelihod rather than the mean the magnitude of the
+        # gradients may be very large. We rescale it during the
+        # inference.
         llh = self.decoder.llh - self.encoder.kl_div
-        objective = T.mean(llh)
+        objective = T.sum(llh)
         self.log_likelihood = theano.function(
             inputs=[self.encoder.input],
             outputs=llh
         )
 
         # Parameters to update.
-        params = self.encoder.params + self.decoder.params
+        self.params = self.encoder.params + self.decoder.params
 
         # Gradient of cost function with respect to the parameters.
-        gradients = [T.grad(objective, param) for param in params]
-
-        # Standard SGA training.
-        StdSGATheano.__init__(
-            self,
-            [self.encoder.input],
-            objective,
-            objective,
-            params,
-            gradients
+        gradients = [T.grad(objective, param) for param in self.params]
+        self.get_gradients = theano.function(
+            inputs=[self.encoder.input],
+            outputs=[self.decoder.llh] + gradients
         )
+
 
         # ADAM SGA training.
         AdamSGATheano.__init__(
             self,
-            [self.encoder.input],
-            objective,
-            objective,
-            params,
+            [],
+            self.params,
             gradients
         )
+
+
+    # PersistentModel interface implementation.
+    # -----------------------------------------------------------------
+
+    def to_dict(self):
+        return {
+            'dim_fea': self.dim_fea,
+            'dim_latent': self.dim_latent,
+            'n_layers': self.n_layers,
+            'n_units': self.n_units,
+            'activation': self.activation,
+            'log_var_prior': self.log_var_prior,
+            'non_informative_prior': self.non_informative_prior,
+            'params': [param.get_value() for param in self.params]
+        }
+
+    @staticmethod
+    def load_from_dict(model_data):
+        model = VAE.__new__(VAE)
+
+        model.dim_fea = model_data['dim_fea']
+        model.dim_latent = model_data['dim_latent']
+        model.n_layers = model_data['n_layers']
+        model.n_units = model_data['n_units']
+        model.activation = model_data['activation']
+        model.log_var_prior = model_data['log_var_prior']
+        model.non_informative_prior = model_data['non_informative_prior']
+
+        model._build()
+        for model_param, param in zip(model.params, model_data['params']):
+            model_param.set_value(param)
+
+        return model
+
+    # -----------------------------------------------------------------
 
 
 class MLPEncoderGMM(MLPEncoder):
     """Encoding MLP for the VAE GMM prior over the latent variable."""
 
-    def __init__(self, dim_fea, dim_latent, n_layers, n_units, activation):
+    def __init__(self, dim_fea, dim_latent, n_layers, n_units, activation,
+                 log_var_prior, non_informative_prior):
         """Initialize a MLP.
 
         Parameters
@@ -220,8 +339,19 @@ class MLPEncoderGMM(MLPEncoder):
             Non-linear activation.
 
         """
-        MLPEncoder.__init__(self, dim_fea, dim_latent, n_layers, n_units,
-                            activation)
+        MLPEncoder.__init__(
+            self,
+            dim_fea,
+            dim_latent,
+            n_layers,
+            n_units,
+            activation,
+            log_var_prior,
+            non_informative_prior
+        )
+
+    def _build(self):
+        MLPEncoder._build(self)
 
         # Create a function to output the natural parameters of the
         # Gaussian posteriors.
@@ -259,7 +389,7 @@ class MLPEncoderGMM(MLPEncoder):
         self.kl_div += a_p - a_q
 
 
-class SVAE(StdSGATheano, AdamSGATheano):
+class SVAE(PersistentModel, AdamSGATheano):
     """Variational Auto-Encoder with GMM."""
 
     def __init__(self, dim_fea, dim_latent, n_layers, n_units,
@@ -280,39 +410,44 @@ class SVAE(StdSGATheano, AdamSGATheano):
             Non-linear activation.
 
         """
+        self.dim_fea = dim_fea
+        self.dim_latent = dim_latent
+        self.n_layers = n_layers
+        self.n_units = n_units
+        self.activation = activation
+
+        # The constructor does not include the prior model as it gives
+        # more flexibility to do operation on the VAE structure or on
+        # the prior separately.
         self.prior = None
 
-        self.dim_latent = dim_latent
+        self._build()
 
+    def _build(self):
         # Encoding network.
-        self.encoder = MLPEncoderGMM(dim_fea, dim_latent, n_layers,
-                                     n_units, activation)
+        self.encoder = MLPEncoderGMM(
+            self.dim_fea,
+            self.dim_latent,
+            self.n_layers,
+            self.n_units,
+            self.activation,
+            self.log_var_prior,
+            self.non_informative_prior
+        )
 
         # Decoding network.
-        self.decoder = MLPDecoder(self.encoder, dim_fea, dim_latent, n_layers,
-                                  n_units, activation)
-
-        # For debugging.
-        self.sample = theano.function(
-            inputs=[
-                self.encoder.input,
-                self.encoder.exp_np1,
-                self.encoder.exp_np2
-            ],
-            outputs=self.decoder.output
-        )
-        self.encode = theano.function(
-            inputs=[
-                self.encoder.input,
-                self.encoder.exp_np1,
-                self.encoder.exp_np2
-            ],
-            outputs=self.encoder.output
+        self.decoder = MLPDecoder(
+            self.encoder,
+            self.dim_fea,
+            self.dim_latent,
+            self.n_layers,
+            self.n_units,
+            self.activation
         )
 
         # Lower bound of the log-likelihood.
         llh = self.decoder.llh - self.encoder.kl_div
-        objective = T.mean(llh)
+        objective = T.sum(llh)
         self.log_likelihood = theano.function(
             inputs=[
                 self.encoder.input,
@@ -323,35 +458,34 @@ class SVAE(StdSGATheano, AdamSGATheano):
         )
 
         # Parameters to update.
-        params = self.encoder.params + self.decoder.params
+        self.params = self.encoder.params + self.decoder.params
 
         # Gradient of cost function with respect to the parameters.
-        gradients = [T.grad(objective, param) for param in params]
+        gradients = [T.grad(objective, param) for param in self.params]
 
         # Specific gradients for the prior.
         grad_np1 = T.grad(objective, self.encoder.np1)
         grad_np2 = T.grad(objective, self.encoder.np2)
 
-        # ADAM SGA training.
-        StdSGATheano.__init__(
-            self,
-            [self.encoder.input, self.encoder.exp_np1, self.encoder.exp_np2],
-            [objective, T.concatenate([grad_np1, grad_np2], axis=1)],
-            objective,
-            params,
-            gradients
-        )
+        inputs = [
+            self.encoder.input,
+            self.encoder.exp_np1,
+            self.encoder.exp_np2
+        ]
+        outputs = [llh, T.concatenate([grad_np1, grad_np2], axis=1)]
+        outputs += gradients
 
+        self.get_gradients = theano.function(inputs=inputs, outputs=outputs)
+
+        # ADAM SGA training.
         AdamSGATheano.__init__(
             self,
-            [self.encoder.input, self.encoder.exp_np1, self.encoder.exp_np2],
-            [objective, T.concatenate([grad_np1, grad_np2], axis=1)],
-            objective,
-            params,
+            [],
+            self.params,
             gradients
         )
 
-    def optimize_local_factors(self, data, n_iter=2):
+    def optimize_local_factors(self, data, n_iter=1):
         """Optimize the local factors q(x) and q(z).
 
         Parameters
@@ -422,3 +556,44 @@ class SVAE(StdSGATheano, AdamSGATheano):
         s_stats = np.c_[exp_x1, exp_x2, padding]
 
         return resps, exp_np1, exp_np2, s_stats, model_data
+
+    # PersistentModel interface implementation.
+    # -----------------------------------------------------------------
+
+    def to_dict(self):
+        return {
+            'dim_fea': self.dim_fea,
+            'dim_latent': self.dim_latent,
+            'n_layers': self.n_layers,
+            'n_units': self.n_units,
+            'activation': self.activation,
+            'log_var_prior': self.log_var_prior,
+            'non_informative_prior': self.non_informative_prior,
+            'params': [param.get_value() for param in self.params]
+        }
+
+    @staticmethod
+    def load_from_dict(model_data):
+        model = SVAE.__new__(SVAE)
+
+        model.dim_fea = model_data['dim_fea']
+        model.dim_latent = model_data['dim_latent']
+        model.n_layers = model_data['n_layers']
+        model.n_units = model_data['n_units']
+        model.activation = model_data['activation']
+        model.log_var_prior = model_data['log_var_prior']
+        model.non_informative_prior = model_data['non_informative_prior']
+
+        model._build()
+        for model_param, param in zip(model.params, model_data['params']):
+            model_param.set_value(param)
+
+        return model
+
+    @staticmethod
+    def load(file_obj):
+        model_data = pickle.load(file_obj)
+        return SVAE.load_from_dict(model_data)
+
+    # -----------------------------------------------------------------
+

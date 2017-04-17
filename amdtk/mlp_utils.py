@@ -92,12 +92,11 @@ def _init_weights_matrix(dim_in, dim_out, activation, borrow=True):
             size=(dim_in, dim_out)
         )
     elif activation == 'relu':
-        retval = np.random.normal(
-            0.,
-            .01,
-            size=(dim_in, dim_out)
-        )
+        val = np.sqrt(12 / (dim_in + dim_out))
+        retval = np.random.uniform(low=-val, high=val, size=(dim_in, dim_out))
     elif activation == 'linear':
+        #val = np.sqrt(12 / (dim_in + dim_out))
+        #retval = np.random.uniform(low=-val, high=val, size=(dim_in, dim_out))
         retval = np.random.normal(
             0.,
             .01,
@@ -111,7 +110,7 @@ def _init_weights_matrix(dim_in, dim_out, activation, borrow=True):
 
 
 def _init_bias(dim, borrow=True):
-    return theano.shared(np.zeros(dim, dtype=theano.config.floatX),
+    return theano.shared(np.zeros(dim, dtype=theano.config.floatX) + 0.1,
                          borrow=borrow)
 
 
@@ -234,9 +233,9 @@ class MLPGaussian(metaclass=abc.ABCMeta):
             dim_in=n_units,
             dim_out=dim_out,
             activation='linear')
-        values = np.random.normal(0., 1., (n_units, dim_out))
-        values = np.asarray(values, dtype=theano.config.floatX)
-        self.mean_layer.params[0].set_value(values)
+        #values = np.random.normal(0., 1., (n_units, dim_out))
+        #values = np.asarray(values, dtype=theano.config.floatX)
+        #self.mean_layer.params[0].set_value(values)
         self.params += self.mean_layer.params
         self.mean = self.mean_layer.output
 
@@ -245,8 +244,8 @@ class MLPGaussian(metaclass=abc.ABCMeta):
             dim_in=n_units,
             dim_out=dim_out,
             activation='linear')
-        values = np.asarray(np.zeros(dim_out) - 3., dtype=theano.config.floatX)
-        self.log_var_layer.params[1].set_value(values)
+        #values = np.asarray(np.zeros(dim_out) - 10., dtype=theano.config.floatX)
+        #self.log_var_layer.params[1].set_value(values)
         self.params += self.log_var_layer.params
         self.log_var = self.log_var_layer.output
 

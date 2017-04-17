@@ -51,7 +51,7 @@ _T = 0o0100000  # has third differential coefficients
 TIME_UNIT = 10000000
 
 
-def read_htk(path, infos=False):
+def read_htk(path, infos=False, ignore_timing=False):
     """ Read binary file according to the specification given
     `here <http://www.ee.columbia.edu/ln/LabROSA/doc/HTKBook21/node58.html>`_.
     Eventually, one can specify a specific portion of the file to load
@@ -68,6 +68,9 @@ def read_htk(path, infos=False):
         Path to the features HTK file.
     infos : boolean
         If "infos" is True, then the header informations are returned
+    ignore_timing : boolean
+        If True ignore the timing information and load all the
+        features.
 
     Returns
     -------
@@ -123,9 +126,14 @@ def read_htk(path, infos=False):
         if param_kind & _C:
             data = (data + bias) / denom
 
+        if ignore_timing:
+            ret_data = data
+        else:
+            ret_data = data[start:end]
+
         if not infos:
-            return data[start: end]
-        return data[start: end], (n_samples, samp_period, samp_size)
+            return ret_data
+        return ret_data, (n_samples, samp_period, samp_size)
 
 
 def write_htk(path, data, samp_period=100000):

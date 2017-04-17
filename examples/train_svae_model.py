@@ -1,6 +1,6 @@
 
 """
-Train a phone-loop model.
+Train a SVAE model.
 
 Copyright (C) 2017, Lucas Ondel
 
@@ -33,23 +33,17 @@ import pickle
 from ipyparallel import Client
 import amdtk
 
-DOC = "Train a phone-loop model."
+DOC = "Train a SVAE model."
 
 
 # Callback to monitor the convergence of the training.
 def callback(args):
     epoch = args['epoch']
     lower_bound = args['objective']
+    kl = args['kl_div']
     time = args['time']
     print('epoch=' + str(epoch), 'time=' + str(time),
-          'lower-bound=' + str(lower_bound))
-
-
-# Possible training strategies.
-training_alg = {
-    'vb': amdtk.StdVBInference,
-    'svb': amdtk.StochasticVBInference
-}
+          'lower-bound=' + str(lower_bound), 'kl=' + str(kl))
 
 
 def main():
@@ -63,9 +57,6 @@ def main():
 
     # Training.
     group = parser.add_argument_group('training')
-    group.add_argument('--training', default='vb',
-                       choices=training_alg.keys(),
-                       help='training strategy (default: vb)')
     group.add_argument('--train_args', default='{}',
                        help='training specific argument "{key1: val1, '
                             'key2:val2,...}"')
@@ -77,8 +68,12 @@ def main():
                         help='list of features files')
     parser.add_argument('model', type=argparse.FileType('rb'),
                         help='model to train')
+    parser.add_argument('prior', type=argparse.FileType('rb'),
+                        help='SVAE prior')
     parser.add_argument('out_model', type=argparse.FileType('wb'),
                         help='output trained model')
+    parser.add_argument('out_prior', type=argparse.FileType('wb'),
+                        help='output trained prior')
 
     # Parse the command line.
     args = parser.parse_args()
@@ -95,18 +90,22 @@ def main():
     segments = [fname.strip() for fname in args.fealist]
 
     # Load the model to train.
-    ploop = amdtk.PersistentModel.load(args.model)
+    prior = amdtk.PersistentModel.load(args.prior)
+    model = amdtk.SVAE.load(args.model)
+    print(model)
+    model.prior = prior
 
     # Parse the training arguments.
     train_args = ast.literal_eval(args.train_args)
 
     # Train the model.
-    training = training_alg[args.training](dview, data_stats, train_args,
-                                           ploop)
+    training = amdtk.SVAEAdamSGAInference(dview, data_stats, train_args,
+                                          model)
     training.run(segments, callback)
 
     # Write the updated model on the disk.
-    ploop.save(args.out_model)
+    model.save(args.out_model)
+    model.prior.save(args.out_prior)
 
 # Makes sure this script cannot be imported.
 if __name__ == '__main__':

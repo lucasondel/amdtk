@@ -14,6 +14,8 @@ from .internal_io import write_mlf
 from .internal_io import read_ctm
 from .internal_io import write_eval_to_clusters
 
+from .data_frontend import DataFrontEnd
+
 from .training import acc_stats
 from .training import add_stats
 from .training import remove_stats
@@ -33,7 +35,6 @@ from .inference import Inference
 from .inference import StdVBInference
 from .inference import StochasticVBInference
 from .inference import AdamSGAInference
-from .inference import SVAEStdSGAInference
 from .inference import SVAEAdamSGAInference
 
 from .mixture import Mixture
@@ -47,7 +48,6 @@ from .normal_wishart import NormalWishart
 
 from .phone_loop import PhoneLoop
 
-from .sga_training import StdSGATheano
 from .sga_training import AdamSGATheano
 
 from .svae_prior import SVAEPrior

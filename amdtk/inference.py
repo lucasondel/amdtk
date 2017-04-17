@@ -62,6 +62,10 @@ class Inference(metaclass=abc.ABCMeta):
             import numpy
             from amdtk import read_htk
 
+        self.dview.push({
+            'data_stats': self.data_stats,
+        })
+
     def run(self, data, callback):
         """Train the model.
 
@@ -111,8 +115,8 @@ class Inference(metaclass=abc.ABCMeta):
                                 range(0, len(fea_list), len(self.dview))]
 
                 # Update the model.
-                objective = self.train(new_fea_list, epoch + 1,
-                                       self.time_step)
+                objective, kl_div = self.train(new_fea_list, epoch + 1,
+                                               self.time_step)
 
                 # Monitor the convergence.
                 callback({
@@ -120,7 +124,8 @@ class Inference(metaclass=abc.ABCMeta):
                     'batch': int(mini_batch / batch_size) + 1,
                     'n_batch': int(np.ceil(len(data) / batch_size)),
                     'time': time.time() - start_time,
-                    'objective': objective
+                    'objective': objective,
+                    'kl_div': kl_div
                 })
 
     @abc.abstractmethod
@@ -173,6 +178,11 @@ class StdVBInference(Inference):
             # Load the features.
             data = read_htk(fea_file)
 
+            # Mean/Variance normalization.
+            var = 1. / data_stats['precision']
+            data -= data_stats['mean']
+            data /= numpy.sqrt(var)
+
             # Get the accumulated sufficient statistics for the
             # given set of features.
             log_norm, new_acc_stats = model.vb_e_step(data)
@@ -213,12 +223,12 @@ class StdVBInference(Inference):
         # Compute the lower-bound of the data given the model. Needs
         # to be done before we update the parameters.
         kl_div = self.model.kl_div_posterior_prior()
-        lower_bound = exp_llh - kl_div
+        lower_bound = exp_llh
 
         # Update the parameters of the model.
         self.model.vb_m_step(acc_stats)
 
-        return lower_bound / self.data_stats['count']
+        return lower_bound / self.data_stats['count'], kl_div
 
 
 class StochasticVBInference(Inference):
@@ -258,191 +268,270 @@ class StochasticVBInference(Inference):
 
         # Estimate the lower bound.
         kl_div = self.model.kl_div_posterior_prior()
-        elbo = (scale * exp_llh - kl_div) / self.data_stats['count']
+        elbo = (scale * exp_llh) / self.data_stats['count']
 
         # Update the parameters.
-        grads = self.model.natural_grad_update(acc_stats, lrate)
+        self.model.natural_grad_update(acc_stats, lrate)
 
-        return elbo
+        return elbo, kl_div
 
 
 class AdamSGAInference(Inference):
     """Variational Auto-Encoder ADAM training."""
 
-    def __init__(self, params, model):
-        """Initialize the VAE Adam SGA training."""
-        Inference.__init__(self, params, model)
-        model.b1 = float(params.get('b1', model.b1))
-        model.b2 = float(params.get('b2', model.b2))
-        model.lrate = float(params.get('lrate', model.lrate))
-        self.model = model
-
-    def train(self, data, epoch, mini_batch):
-        """One update of the training process.
+    @staticmethod
+    @interactive
+    def gradients(fea_list):
+        """Jod to compute the gradients.
 
         Parameters
         ----------
-        model : model
-            Model to train.
-        data : numpy.ndarray
-            Data to train on.
-        epoch : int
-            Epoch of the training.
-        mini_batch : int
-            Mini-batch index for the current epoch.
+        fea_list : list
+            List of features file.
+
+        Returns
+        -------
+        exp_llh : float
+            Accumulated log-likelihood.
+        gradients : object
+            Gradients of the objective function.
+        n_frames : int
+            Number of frames in the batch.
 
         """
+        # Initialize the returned values.
+        exp_llh = 0.
+        gradients = None
+        n_frames = 0
+
+        # For each features file...
+        for fea_file in fea_list:
+            # Load the features.
+            data = read_htk(fea_file)
+
+            # Mean/Variance normalization.
+            var = 1. / data_stats['precision']
+            data -= data_stats['mean']
+            data /= numpy.sqrt(var)
+
+            # Get the accumulated sufficient statistics for the
+            # given set of features.
+            res = model.get_gradients(data)
+            llh = res[0]
+            new_gradients = res[1:]
+
+            # Global accumulators.
+            n_frames += len(data)
+            exp_llh += numpy.sum(llh)
+            if gradients is None:
+                gradients = new_gradients
+            else:
+                for grad1, grad2 in zip(gradients, new_gradients):
+                    grad1[0] += grad2[0]
+
+        return (exp_llh, gradients, n_frames)
+
+    def __init__(self, dview, data_stats, params, model):
+        Inference.__init__(self, dview, data_stats, params, model)
+        self.forgetting_rate = float(params.get('forgetting_rate', .51))
+        self.delay = float(params.get('delay', 0.))
+        self.scale = float(params.get('scale', 1.))
+        self.b1 = float(params.get('b1', .95))
+        self.b2 = float(params.get('b2', .999))
+        self.lrate = float(params.get('lrate', .01))
+        self.model = model
+
+    def train(self, fea_list, epoch, time_step):
+        # Propagate the model to all the remote clients.
+        self.dview.push({
+            'model': self.model,
+        })
+
+        # Parallel computation of the gradients.
+        res_list = self.dview.map_sync(AdamSGAInference.gradients, fea_list)
+
+        # Total number of frame of the mini-batch.
+        exp_llh = 0.
+        total_n_frames = 0.
+        grads = None
+        for new_exp_llh, new_grads, n_frames in res_list:
+            exp_llh += new_exp_llh
+            total_n_frames += n_frames
+            if grads is None:
+                grads = new_grads
+            else:
+                for grad1, grad2 in zip(grads, new_grads):
+                    grad1[0] += grad2[0]
+
+        # Rescale the gradients.
+        for grad in grads:
+            grad /= total_n_frames
+
+        # Compute the learning rate.
+        lrate = self.scale * \
+            ((self.delay + time_step)**(-self.forgetting_rate))
+
         # Update the parameters of the VAE.
-        lower_bound = self.model.adam_sga_update(data, epoch)
-
-        return lower_bound
-
-
-class SVAEStdSGAInference(Inference):
-    """Structured Variational Auto-Encoder training."""
-
-    def __init__(self, params, model):
-        """Initialize the VAE SGA training."""
-        Inference.__init__(self, params, model)
-        model.prior.forgetting_rate = \
-            float(params.get('prior_forgetting_rate',
-                             model.prior.forgetting_rate))
-        model.prior.delay = float(params.get('prior_delay', model.prior.delay))
-        model.prior.scale = float(params.get('prior_scale', model.prior.scale))
-        model.prior.n_frames = int(params.get('prior_n_frames',
-                                              model.prior.n_frames))
-        model.forgetting_rate = float(params.get('forgetting_rate',
-                                                 model.forgetting_rate))
-        model.delay = float(params.get('delay', model.delay))
-        model.scale = float(params.get('scale', model.scale))
-        model.n_frames = int(params.get('n_frames', model.n_frames))
-        self._n_iter = int(params.get('n_iter', 1))
-        self._time_step = 0
-        self.model = model
-
-    def train(self, data, epoch, mini_batch):
-        """One update of the training process.
-
-        Parameters
-        ----------
-        model : model
-            Model to train.
-        data : numpy.ndarray
-            Data to train on.
-        epoch : int
-            Epoch of the training.
-        mini_batch : int
-            Mini-batch index for the current epoch.
-
-        """
-        self._time_step += 1
-
-        # Optimize the log factors q(Z) and q(X)
-        resps, exp_np1, exp_np2, s_stats = \
-            self.model.optimize_local_factors(data, self._n_iter)
-
-        # Update the VAE.
-        lower_bound, corr_grad = self.model.std_sga_update(
-            data,
-            exp_np1,
-            exp_np2,
-            self._time_step
+        self.model.adam_sga_update(
+            *grads,
+            self.b1,
+            self.b2,
+            self.lrate,
+            time_step
         )
 
-        # Correct the expected value of the sufficient statistics.
-        padding = s_stats.shape[1] - corr_grad.shape[1]
-        s_stats = s_stats + np.c_[corr_grad, np.zeros((len(data), padding))]
-
-        # Accumulate the statistics for the latent model.
-        acc_s_stats = self.model.prior.accumulate_stats(s_stats, resps)
-
-        # Scale the sufficient statistics.
-        n_frames = self.model.prior.n_frames
-        scale = self.model.prior.n_frames / len(resps)
-        acc_s_stats *= scale
-
-        vae_prior_kl = self.model.prior.kl_div_posterior_prior()
-
-        # Compute the gradients.
-        grads = self.model.prior.grads_from_acc_stats(acc_s_stats)
-
-        lower_bound -= vae_prior_kl / n_frames
-
-        # Update the VAE's prior.
-        self.model.prior.std_sga_update_from_grads(grads, self._time_step)
-
-        return lower_bound
+        return exp_llh / total_n_frames, 0.
 
 
 class SVAEAdamSGAInference(Inference):
     """Structured Variational Auto-Encoder training."""
 
-    def __init__(self, params, model):
-        """Initialize the VAE SGA training."""
-        Inference.__init__(self, params, model)
-        model.prior.forgetting_rate = \
-            float(params.get('forgetting_rate', model.prior.forgetting_rate))
-        model.prior.delay = float(params.get('delay', model.prior.delay))
-        model.prior.scale = float(params.get('scale', model.prior.scale))
-        model.prior.n_frames = int(params.get('n_frames', model.prior.n_frames))
-        model.b1 = float(params.get('b1', model.b1))
-        model.b2 = float(params.get('b2', model.b2))
-        model.lrate = float(params.get('lrate', model.lrate))
-        self._n_iter = int(params.get('n_iter', 1))
-        self._time_step = 0
-        self.model = model
-
-    def train(self, data, epoch, mini_batch):
-        """One update of the training process.
+    @staticmethod
+    @interactive
+    def gradients(fea_list):
+        """Jod to compute the gradients.
 
         Parameters
         ----------
-        model : model
-            Model to train.
-        data : numpy.ndarray
-            Data to train on.
-        epoch : int
-            Epoch of the training.
-        mini_batch : int
-            Mini-batch index for the current epoch.
+        fea_list : list
+            List of features file.
+
+        Returns
+        -------
+        exp_llh : float
+            Accumulated log-likelihood.
+        gradients : object
+            Gradients of the objective function.
+        n_frames : int
+            Number of frames in the batch.
 
         """
-        self._time_step += 1
+        # Initialize the returned values.
+        exp_llh = 0.
+        acc_stats = None
+        gradients = None
+        corr_grad = None
+        n_frames = 0
 
-        # Optimize the log factors q(Z) and q(X)
-        resps, exp_np1, exp_np2, s_stats, model_data = \
-            self.model.optimize_local_factors(data, self._n_iter)
+        # For each features file...
+        for fea_file in fea_list:
+            # Load the features.
+            data = read_htk(fea_file)
 
-        # Update the VAE.
-        lower_bound, corr_grad = self.model.adam_sga_update(
-            data,
-            exp_np1,
-            exp_np2,
-            epoch
-        )
+            # Mean/Variance normalization.
+            var = 1. / data_stats['precision']
+            data -= data_stats['mean']
+            data /= numpy.sqrt(var)
+
+            # Optimize the log factors q(Z) and q(X)
+            resps, exp_np1, exp_np2, s_stats, model_data = \
+                model.optimize_local_factors(data, 10)
+
+            # Get the gradients.
+            res = model.get_gradients(data, exp_np1, exp_np2)
+            llh = res[0]
+            new_corr_grad = res[1]
+            new_gradients = res[2:]
+
+            # Correct the expected value of the sufficient statistics.
+            #padding = s_stats.shape[1] - corr_grad.shape[1]
+            #s_stats = s_stats + numpy.c_[corr_grad, numpy.zeros((len(data), padding))]
+
+            # Accumulate the statistics for the latent model.
+            new_acc_stats = model.prior.accumulate_stats(s_stats, resps,
+                                                         model_data)
+
+            # Global accumulators.
+            n_frames += len(data)
+            exp_llh += numpy.sum(llh)
+            if gradients is None:
+                acc_stats = new_acc_stats
+                gradients = new_gradients
+                corr_grad = new_corr_grad.sum(axis=0)
+            else:
+                acc_stats += new_acc_stats
+                for grad1, grad2 in zip(gradients, new_gradients):
+                    grad1[0] += grad2[0]
+                corr_grad += new_corr_grad.sum(axis=0)
+
+        return (exp_llh, gradients, acc_stats, corr_grad, n_frames)
+
+    def __init__(self, dview, data_stats, params, model):
+        Inference.__init__(self, dview, data_stats, params, model)
+        self.forgetting_rate = float(params.get('forgetting_rate', .51))
+        self.delay = float(params.get('delay', 0.))
+        self.scale = float(params.get('scale', 1.))
+        self.b1 = float(params.get('b1', .95))
+        self.b2 = float(params.get('b2', .999))
+        self.lrate = float(params.get('lrate', .01))
+        self.model = model
+
+        print(self.forgetting_rate, self.delay, self.scale)
+
+    def train(self, fea_list, epoch, time_step):
+        # Propagate the model to all the remote clients.
+        self.dview.push({
+            'model': self.model,
+        })
+
+        # Parallel computation of the gradients.
+        res_list = self.dview.map_sync(SVAEAdamSGAInference.gradients, fea_list)
+
+        # Total number of frame of the mini-batch.
+        exp_llh = 0.
+        total_n_frames = 0.
+        acc_stats = None
+        grads = None
+        corr_grad = None
+        for new_exp_llh, new_grads, new_acc_stats, new_corr_grad, n_frames in res_list:
+            exp_llh += new_exp_llh
+            total_n_frames += n_frames
+            if grads is None:
+                acc_stats = new_acc_stats
+                grads = new_grads
+                corr_grad = new_corr_grad
+            else:
+                acc_stats += new_acc_stats
+                for grad1, grad2 in zip(grads, new_grads):
+                    grad1[0] += grad2[0]
+                corr_grad += new_corr_grad
+
 
         # Correct the expected value of the sufficient statistics.
-        padding = s_stats.shape[1] - corr_grad.shape[1]
-        s_stats = s_stats + np.c_[corr_grad, np.zeros((len(data), padding))]
+        #padding = acc_stats[1].shape[1] - corr_grad.shape[0]
+        #corr_grad = corr_grad
+        #acc_stats[1] += np.r_[corr_grad, np.zeros(padding)]
+        #print(np.linalg.norm(corr_grad))
 
-        # Accumulate the statistics for the latent model.
-        acc_s_stats = self.model.prior.accumulate_stats(s_stats, resps,
-                                                        model_data)
+        # Scale the statistics.
+        scale = self.data_stats['count'] / total_n_frames
+        acc_stats *= scale
 
-        # Scale the sufficient statistics.
-        n_frames = self.model.prior.n_frames
-        scale = self.model.prior.n_frames / len(resps)
-        acc_s_stats *= scale
+        # Compute the learning rate.
+        lrate = self.scale * \
+            ((self.delay + time_step)**(-self.forgetting_rate))
 
-        vae_prior_kl = self.model.prior.kl_div_posterior_prior()
+        # Estimate the lower-bound.
+        kl_div = self.model.prior.kl_div_posterior_prior()
+        elbo = exp_llh - kl_div
+        elbo /= total_n_frames
 
-        # Compute the gradients.
-        grads = self.model.prior.grads_from_acc_stats(acc_s_stats)
 
-        lower_bound -= vae_prior_kl / n_frames
+        # Update the parameters.
+        self.model.prior.natural_grad_update(acc_stats, lrate)
 
-        # Update the VAE's prior.
-        self.model.prior.std_sga_update_from_grads(grads, self._time_step)
+        # Rescale the gradients.
+        for grad in grads:
+            grad /= total_n_frames
 
-        return lower_bound
+        # Update the parameters of the VAE.
+        self.model.adam_sga_update(
+            *grads,
+            self.b1,
+            self.b2,
+            self.lrate,
+            time_step
+        )
+
+        return elbo, kl_div
 

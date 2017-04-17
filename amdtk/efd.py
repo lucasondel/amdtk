@@ -42,6 +42,9 @@ class EFDStats(object):
         """
         self._stats = stats
 
+    def __setitem__(self, k, value):
+        self._stats[k] = value
+
     def __getitem__(self, k):
         return self._stats[k]
 

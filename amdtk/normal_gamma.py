@@ -1,3 +1,4 @@
+
 """
 Implementation of a Normal-Gamma density prior.
 

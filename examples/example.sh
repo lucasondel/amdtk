@@ -15,23 +15,34 @@ njobs=4
 # Data settings.
 # ---------------------------------------------------------------------
 # List of features file for the training.
-train_fea_list="test.list"
+train_fea_list="test_fbank.list"
 
 
 # Model settings.
 # ---------------------------------------------------------------------
-# Number of units.
-n_units=10
+# GMM Model
+# ---------
+#model_type="gmm"
+#n_components=1
+#model_args="{'n_components': $n_components}"
 
-# Number of states per unit.
-n_states=3
+# Phone-loop
+# ----------
+#model_type="hmm"
+#n_units=50
+#n_states=3
+#model_args="{'n_units': $n_units, 'n_states': $n_states}"
+
+# VAE
+# ----------
+model_type="vae"
+model_args="{'dim_latent': 20, 'n_layers': 1, 'n_units': 200}"
+
 
 # Training settings.
 # ---------------------------------------------------------------------
-training_type=vb
-training_args="{'epochs': 10}"
-#training_type=svb
-#training_args="{'epochs': 3, 'batch_size': 2, 'scale':0.1, 'delay':0, 'forgetting_rate':.5}"
+training_args="{'epochs': 5, 'batch_size':10, 'lrate': 0.001}"
+#training_args="{'epochs': 5, 'batch_size': 10, 'scale':1, 'delay':0, 'forgetting_rate':.51}"
 
 # Clean up function. Its main purpose is to kill
 # the running jobs if an error occurs.
@@ -46,28 +57,33 @@ function clean_exit {
 # Start the parallel environment.
 # ---------------------------------------------------------------------
 ipcluster start --profile "$profile" -n "$njobs" --daemonize
-sleep 10
+sleep 20
 
 
 # Compute the statistics of the training data.
 # ---------------------------------------------------------------------
-#python get_data_stats.py $train_fea_list stats.bin || clean_exit 1
+python get_data_stats.py --profile "$profile" $train_fea_list stats.bin || clean_exit 1
 
 
-# Build the phone loop model.
+# Build the model.
 # ---------------------------------------------------------------------
-#python create_phone_loop.py \
-#    --n_units "$n_units" \
-#    --n_states "$n_states" \
-#    stats.bin ploop.bin || clean_exit 1
-
+python create_model.py \
+    --model_type "$model_type" \
+    --model_args "$model_args" \
+    stats.bin vae_init.bin || clean_exit 1
 
 # Train the phone loop model.
 # ---------------------------------------------------------------------
-python train_phone_loop.py \
-    --training "$training_type" \
+python train_model.py \
+    --profile "$profile" \
     --train_args "$training_args" \
-    stats.bin "$train_fea_list" ploop.bin new_ploop.bin || clean_exit 1
+    stats.bin "$train_fea_list" vae_init.bin vae.bin || clean_exit 1
+
+
+# Transform the features.
+# ---------------------------------------------------------------------
+python vae_transform_features.py \
+    test_fbank.scp vae.bin || clean_exit 1
 
 
 # Stop the parallel environment and exit.

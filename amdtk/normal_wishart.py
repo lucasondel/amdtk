@@ -163,7 +163,7 @@ class NormalWishart(EFDPrior):
         return model
 
     # EFDPrior interface implementation.
-    # ------------------------------------------------------------------
+    # -----------------------------------------------------------------
 
     @property
     def natural_params(self):
@@ -196,5 +196,5 @@ class NormalWishart(EFDPrior):
     def grad_log_partition(self):
         return self._grad_log_partition
 
-    # ------------------------------------------------------------------
+    # -----------------------------------------------------------------
 
