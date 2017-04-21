@@ -54,6 +54,7 @@ class Inference(metaclass=abc.ABCMeta):
         self.dview = dview
         self.epochs = int(params.get('epochs', 1))
         self.batch_size = int(params.get('batch_size', 1))
+        self.valid_freq = int(params.get('valid_freq', 1))
         self.model = model
         self.time_step = 0
         self.data_stats = data_stats
@@ -66,15 +67,19 @@ class Inference(metaclass=abc.ABCMeta):
             'data_stats': self.data_stats,
         })
 
-    def run(self, data, callback):
+    def run(self, data, valid_data, callback):
         """Train the model.
 
         Parameters
         ----------
         model : object
             Model to train.
-        data : numpy.ndarray
+        data : list
             Data to train on.
+        valid_data : list
+            Validation data.
+        valid_freq : int
+            Frequency of the validation.
         callback : function
             Callback function to monitor the convergence of the
             training. The function takes a dictionary as input that
@@ -111,22 +116,27 @@ class Inference(metaclass=abc.ABCMeta):
 
                 # Reshaped the list of features.
                 fea_list = shuffled_data[start:end]
-                new_fea_list = [fea_list[i:i + len(self.dview)]  for i in
-                                range(0, len(fea_list), len(self.dview))]
+                n_utts = batch_size // len(self.dview)
+                new_fea_list = [fea_list[i:i + n_utts]  for i in
+                                range(0, len(fea_list), n_utts)]
 
                 # Update the model.
-                objective, kl_div = self.train(new_fea_list, epoch + 1,
-                                               self.time_step)
+                self.train(new_fea_list, epoch + 1, self.time_step)
 
-                # Monitor the convergence.
-                callback({
-                    'epoch': epoch + 1,
-                    'batch': int(mini_batch / batch_size) + 1,
-                    'n_batch': int(np.ceil(len(data) / batch_size)),
-                    'time': time.time() - start_time,
-                    'objective': objective,
-                    'kl_div': kl_div
-                })
+                if self.time_step % self.valid_freq == 0:
+                    fea_list = valid_data
+                    new_fea_list = [fea_list[i:i + len(self.dview)]  for i in
+                                    range(0, len(fea_list), len(self.dview))]
+                    objective = self.validate(new_fea_list)
+
+                    # Monitor the convergence.
+                    callback({
+                        'epoch': epoch + 1,
+                        'batch': int(mini_batch / batch_size) + 1,
+                        'n_batch': int(np.ceil(len(data) / batch_size)),
+                        'time': time.time() - start_time,
+                        'objective': objective,
+                    })
 
     @abc.abstractmethod
     def train(self, data, epoch, time_step):
@@ -144,9 +154,21 @@ class Inference(metaclass=abc.ABCMeta):
         """
         pass
 
+    @abc.abstractmethod
+    def validate(self, data):
+        """Compute the objective function on a validation set.
 
-class StdVBInference(Inference):
-    """Standard mean-field Variational Bayes training."""
+        Parameters
+        ----------
+        data : numpy.ndarray
+            Validation data.
+
+        """
+        pass
+
+
+class StochasticVBInference(Inference):
+    """Stochastic VB training."""
 
     @staticmethod
     @interactive
@@ -160,8 +182,6 @@ class StdVBInference(Inference):
 
         Returns
         -------
-        exp_llh : float
-            Accumulated log-likelihood.
         acc_stats : object
             Accumulated sufficient statistics.
         n_frames : int
@@ -169,7 +189,6 @@ class StdVBInference(Inference):
 
         """
         # Initialize the returned values.
-        exp_llh = 0.
         acc_stats = None
         n_frames = 0
 
@@ -179,60 +198,60 @@ class StdVBInference(Inference):
             data = read_htk(fea_file)
 
             # Mean/Variance normalization.
-            var = 1. / data_stats['precision']
-            data -= data_stats['mean']
-            data /= numpy.sqrt(var)
+            #var = 1. / data_stats['precision']
+            #data -= data_stats['mean']
+            #data /= numpy.sqrt(var)
 
             # Get the accumulated sufficient statistics for the
             # given set of features.
-            log_norm, new_acc_stats = model.vb_e_step(data)
+            _, new_acc_stats = model.vb_e_step(data)
 
             # Global accumulators.
             n_frames += len(data)
-            exp_llh += numpy.sum(log_norm)
             if acc_stats is None:
                 acc_stats = new_acc_stats
             else:
                 acc_stats += new_acc_stats
 
-        return (exp_llh, acc_stats, n_frames)
+        return (acc_stats, n_frames)
 
-    def __init__(self, dview, data_stats, params, model):
-        Inference.__init__(self, dview, data_stats, params, model)
-        self.model = model
+    @staticmethod
+    @interactive
+    def objective(fea_list):
+        """Jod compute the objective function.
 
-        # The standard VB training cannot be done on minibatches.
-        self.batch_size = -1
+        Parameters
+        ----------
+        fea_list : list
+            List of features file.
 
-    def train(self, fea_list, epoch, time_step):
-        # Propagate the model to all the remote clients.
-        self.dview.push({
-            'model': self.model,
-        })
+        Returns
+        -------
+        exp_llh : float
+            Accumulated log-likelihood.
 
-        # Parallel accumulation of the sufficient statistics.
-        stats_list = self.dview.map_sync(StdVBInference.e_step, fea_list)
+        """
+        exp_llh = 0.
+        n_frames = 0
 
-        # Accumulate the results from all the jobs.
-        exp_llh = stats_list[0][0]
-        acc_stats = stats_list[0][1]
-        for new_exp_llh, new_acc_stats, new_batch_n_frames in stats_list[1:]:
-            exp_llh += new_exp_llh
-            acc_stats += new_acc_stats
+        # For each features file...
+        for fea_file in fea_list:
+            # Load the features.
+            data = read_htk(fea_file)
 
-        # Compute the lower-bound of the data given the model. Needs
-        # to be done before we update the parameters.
-        kl_div = self.model.kl_div_posterior_prior()
-        lower_bound = exp_llh
+            # Mean/Variance normalization.
+            #var = 1. / data_stats['precision']
+            #data -= data_stats['mean']
+            #data /= numpy.sqrt(var)
 
-        # Update the parameters of the model.
-        self.model.vb_m_step(acc_stats)
+            # Get the accumulated sufficient statistics for the
+            # given set of features.
+            log_norm, _ = model.vb_e_step(data)
 
-        return lower_bound / self.data_stats['count'], kl_div
+            exp_llh += numpy.sum(log_norm)
+            n_frames += len(data)
 
-
-class StochasticVBInference(Inference):
-    """Stochastic VB training."""
+        return exp_llh, n_frames
 
     def __init__(self, dview, data_stats, params, model):
         Inference.__init__(self, dview, data_stats, params, model)
@@ -247,14 +266,13 @@ class StochasticVBInference(Inference):
         })
 
         # Parallel accumulation of the sufficient statistics.
-        stats_list = self.dview.map_sync(StdVBInference.e_step, fea_list)
+        stats_list = self.dview.map_sync(StochasticVBInference.e_step,
+                                         fea_list)
 
         # Accumulate the results from all the jobs.
-        exp_llh = stats_list[0][0]
-        acc_stats = stats_list[0][1]
-        batch_n_frames = stats_list[0][2]
-        for new_exp_llh, new_acc_stats, new_batch_n_frames in stats_list[1:]:
-            exp_llh += new_exp_llh
+        acc_stats = stats_list[0][0]
+        batch_n_frames = stats_list[0][1]
+        for new_acc_stats, new_batch_n_frames in stats_list[1:]:
             acc_stats += new_acc_stats
             batch_n_frames += new_batch_n_frames
 
@@ -266,14 +284,27 @@ class StochasticVBInference(Inference):
         lrate = self.scale * \
             ((self.delay + time_step)**(-self.forgetting_rate))
 
-        # Estimate the lower bound.
-        kl_div = self.model.kl_div_posterior_prior()
-        elbo = (scale * exp_llh) / self.data_stats['count']
-
         # Update the parameters.
         self.model.natural_grad_update(acc_stats, lrate)
 
-        return elbo, kl_div
+    def validate(self, fea_list):
+        # Propagate the model to all the remote clients.
+        self.dview.push({
+            'model': self.model,
+        })
+
+        # Parallel computation of the gradients.
+        res = self.dview.map_sync(StochasticVBInference.objective, fea_list)
+
+        exp_llh = res[0][0]
+        n_frames = res[0][1]
+        for val1, val2 in res[1:]:
+            exp_llh += val1
+            n_frames += val2
+
+        kl_div = self.model.kl_div_posterior_prior()
+
+        return (exp_llh - kl_div) / n_frames
 
 
 class AdamSGAInference(Inference):
@@ -300,7 +331,6 @@ class AdamSGAInference(Inference):
 
         """
         # Initialize the returned values.
-        exp_llh = 0.
         gradients = None
         n_frames = 0
 
@@ -316,20 +346,53 @@ class AdamSGAInference(Inference):
 
             # Get the accumulated sufficient statistics for the
             # given set of features.
-            res = model.get_gradients(data)
-            llh = res[0]
-            new_gradients = res[1:]
+            new_gradients = model.get_gradients(data)
 
             # Global accumulators.
             n_frames += len(data)
-            exp_llh += numpy.sum(llh)
             if gradients is None:
                 gradients = new_gradients
             else:
                 for grad1, grad2 in zip(gradients, new_gradients):
-                    grad1[0] += grad2[0]
+                    grad1 += grad2
 
-        return (exp_llh, gradients, n_frames)
+        return (gradients, n_frames)
+
+    @staticmethod
+    @interactive
+    def objective(fea_list):
+        """Jod to compute the objective function.
+
+        Parameters
+        ----------
+        fea_list : list
+            List of features file.
+
+        Returns
+        -------
+        exp_llh : float
+            Accumulated log-likelihood.
+
+        """
+        objective = 0.
+        n_frames = 0
+
+        # For each features file...
+        for fea_file in fea_list:
+            # Load the features.
+            data = read_htk(fea_file)
+
+            # Mean/Variance normalization.
+            var = 1. / data_stats['precision']
+            data -= data_stats['mean']
+            data /= numpy.sqrt(var)
+
+            # Get the accumulated sufficient statistics for the
+            # given set of features.
+            objective += model.log_likelihood(data)
+            n_frames += len(data)
+
+        return objective, n_frames
 
     def __init__(self, dview, data_stats, params, model):
         Inference.__init__(self, dview, data_stats, params, model)
@@ -341,6 +404,33 @@ class AdamSGAInference(Inference):
         self.lrate = float(params.get('lrate', .01))
         self.model = model
 
+        self.pmean = []
+        self.pvar = []
+        for param in self.model.params:
+            self.pmean.append(np.zeros_like(param))
+            self.pvar.append(np.zeros_like(param))
+
+    def adam_update(self, params, gradients, time_step):
+        gamma = np.sqrt(1 - self.b2**time_step) / (1 - self.b1**time_step)
+
+        for idx in range(len(params)):
+            grad = gradients[idx]
+            pmean = self.pmean[idx]
+            pvar = self.pvar[idx]
+
+            # Biased moments estimate.
+            new_m = self.b1 * pmean + (1. - self.b1) * grad
+            new_v = self.b2 * pvar + (1. - self.b2) * (grad**2)
+
+            # Biased corrected moments estimate.
+            c_m = new_m / (1 - self.b1**time_step)
+            c_v = new_v / (1 - self.b2**time_step)
+
+            params[idx] += self.lrate * c_m / (np.sqrt(c_v) + 1e-8)
+
+            self.pmean[idx] = new_m
+            self.pvar[idx] = new_v
+
     def train(self, fea_list, epoch, time_step):
         # Propagate the model to all the remote clients.
         self.dview.push({
@@ -351,36 +441,39 @@ class AdamSGAInference(Inference):
         res_list = self.dview.map_sync(AdamSGAInference.gradients, fea_list)
 
         # Total number of frame of the mini-batch.
-        exp_llh = 0.
         total_n_frames = 0.
         grads = None
-        for new_exp_llh, new_grads, n_frames in res_list:
-            exp_llh += new_exp_llh
+        for new_grads, n_frames in res_list:
             total_n_frames += n_frames
             if grads is None:
                 grads = new_grads
             else:
                 for grad1, grad2 in zip(grads, new_grads):
-                    grad1[0] += grad2[0]
+                    grad1 += grad2
 
         # Rescale the gradients.
         for grad in grads:
             grad /= total_n_frames
 
-        # Compute the learning rate.
-        lrate = self.scale * \
-            ((self.delay + time_step)**(-self.forgetting_rate))
-
         # Update the parameters of the VAE.
-        self.model.adam_sga_update(
-            *grads,
-            self.b1,
-            self.b2,
-            self.lrate,
-            time_step
-        )
+        self.adam_update(self.model.params, grads, epoch)
 
-        return exp_llh / total_n_frames, 0.
+    def validate(self, fea_list):
+        # Propagate the model to all the remote clients.
+        self.dview.push({
+            'model': self.model,
+        })
+
+        # Parallel computation of the gradients.
+        res = self.dview.map_sync(AdamSGAInference.objective, fea_list)
+
+        exp_llh = res[0][0]
+        n_frames = res[0][1]
+        for val1, val2 in res[1:]:
+            exp_llh += val1
+            n_frames += val2
+
+        return exp_llh / n_frames
 
 
 class SVAEAdamSGAInference(Inference):
@@ -406,11 +499,12 @@ class SVAEAdamSGAInference(Inference):
             Number of frames in the batch.
 
         """
+        from amdtk import read_htk
+        import numpy
+
         # Initialize the returned values.
-        exp_llh = 0.
         acc_stats = None
         gradients = None
-        corr_grad = None
         n_frames = 0
 
         # For each features file...
@@ -425,17 +519,10 @@ class SVAEAdamSGAInference(Inference):
 
             # Optimize the log factors q(Z) and q(X)
             resps, exp_np1, exp_np2, s_stats, model_data = \
-                model.optimize_local_factors(data, 10)
+                model.optimize_local_factors(data, 1)
 
             # Get the gradients.
-            res = model.get_gradients(data, exp_np1, exp_np2)
-            llh = res[0]
-            new_corr_grad = res[1]
-            new_gradients = res[2:]
-
-            # Correct the expected value of the sufficient statistics.
-            #padding = s_stats.shape[1] - corr_grad.shape[1]
-            #s_stats = s_stats + numpy.c_[corr_grad, numpy.zeros((len(data), padding))]
+            new_gradients = model.get_gradients(data, exp_np1, exp_np2)
 
             # Accumulate the statistics for the latent model.
             new_acc_stats = model.prior.accumulate_stats(s_stats, resps,
@@ -443,18 +530,43 @@ class SVAEAdamSGAInference(Inference):
 
             # Global accumulators.
             n_frames += len(data)
-            exp_llh += numpy.sum(llh)
             if gradients is None:
                 acc_stats = new_acc_stats
                 gradients = new_gradients
-                corr_grad = new_corr_grad.sum(axis=0)
             else:
                 acc_stats += new_acc_stats
                 for grad1, grad2 in zip(gradients, new_gradients):
                     grad1[0] += grad2[0]
-                corr_grad += new_corr_grad.sum(axis=0)
+        return (gradients, acc_stats, n_frames)
 
-        return (exp_llh, gradients, acc_stats, corr_grad, n_frames)
+    @staticmethod
+    @interactive
+    def objective(fea_list):
+        # Initialize the returned values.
+        exp_llh = 0.
+        n_frames = 0
+
+        # For each features file...
+        for fea_file in fea_list:
+            # Load the features.
+            data = read_htk(fea_file)
+
+            # Mean/Variance normalization.
+            var = 1. / data_stats['precision']
+            data -= data_stats['mean']
+            data /= numpy.sqrt(var)
+
+            # Optimize the log factors q(Z) and q(X)
+            resps, exp_np1, exp_np2, s_stats, model_data = \
+                model.optimize_local_factors(data, 1)
+
+            new_llh = model.log_likelihood(data, exp_np1, exp_np2)
+
+            # Global accumulators.
+            n_frames += len(data)
+            exp_llh += numpy.sum(new_llh)
+
+        return (exp_llh, n_frames)
 
     def __init__(self, dview, data_stats, params, model):
         Inference.__init__(self, dview, data_stats, params, model)
@@ -464,11 +576,44 @@ class SVAEAdamSGAInference(Inference):
         self.b1 = float(params.get('b1', .95))
         self.b2 = float(params.get('b2', .999))
         self.lrate = float(params.get('lrate', .01))
+        self.update_rate = float(params.get('update_rate', 1))
         self.model = model
+        self.time_step2 = 0
 
-        print(self.forgetting_rate, self.delay, self.scale)
+        self.pmean = []
+        self.pvar = []
+        for param in self.model.params:
+            self.pmean.append(np.zeros_like(param))
+            self.pvar.append(np.zeros_like(param))
+
+        self.pmean_p = []
+        self.pvar_p = []
+        for param in self.model.prior.get_params():
+            self.pmean_p.append(np.zeros_like(param))
+            self.pvar_p.append(np.zeros_like(param))
+
+    def adam_update(self, pmean, pvar, params, gradients, time_step, lrate):
+        for idx in range(len(params)):
+            grad = gradients[idx]
+            m = pmean[idx]
+            v = pvar[idx]
+
+            # Biased moments estimate.
+            new_m = self.b1 * m + (1. - self.b1) * grad
+            new_v = self.b2 * v + (1. - self.b2) * (grad**2)
+
+            # Biased corrected moments estimate.
+            c_m = new_m / (1 - self.b1**time_step)
+            c_v = new_v / (1 - self.b2**time_step)
+
+            params[idx] += lrate * c_m / (np.sqrt(c_v) + 1e-8)
+
+            pmean[idx] = new_m
+            pvar[idx] = new_v
 
     def train(self, fea_list, epoch, time_step):
+        self.time_step2 += 1
+
         # Propagate the model to all the remote clients.
         self.dview.push({
             'model': self.model,
@@ -478,60 +623,72 @@ class SVAEAdamSGAInference(Inference):
         res_list = self.dview.map_sync(SVAEAdamSGAInference.gradients, fea_list)
 
         # Total number of frame of the mini-batch.
-        exp_llh = 0.
         total_n_frames = 0.
         acc_stats = None
         grads = None
-        corr_grad = None
-        for new_exp_llh, new_grads, new_acc_stats, new_corr_grad, n_frames in res_list:
-            exp_llh += new_exp_llh
+        for new_grads, new_acc_stats, n_frames in res_list:
             total_n_frames += n_frames
             if grads is None:
                 acc_stats = new_acc_stats
                 grads = new_grads
-                corr_grad = new_corr_grad
             else:
                 acc_stats += new_acc_stats
                 for grad1, grad2 in zip(grads, new_grads):
                     grad1[0] += grad2[0]
-                corr_grad += new_corr_grad
-
-
-        # Correct the expected value of the sufficient statistics.
-        #padding = acc_stats[1].shape[1] - corr_grad.shape[0]
-        #corr_grad = corr_grad
-        #acc_stats[1] += np.r_[corr_grad, np.zeros(padding)]
-        #print(np.linalg.norm(corr_grad))
 
         # Scale the statistics.
         scale = self.data_stats['count'] / total_n_frames
         acc_stats *= scale
 
         # Compute the learning rate.
-        lrate = self.scale * \
-            ((self.delay + time_step)**(-self.forgetting_rate))
+        if self.time_step2 % self.update_rate == 0:
+            lrate = self.scale * \
+                ((self.delay + self.time_step2)**(-self.forgetting_rate))
 
-        # Estimate the lower-bound.
-        kl_div = self.model.prior.kl_div_posterior_prior()
-        elbo = exp_llh - kl_div
-        elbo /= total_n_frames
-
-
-        # Update the parameters.
-        self.model.prior.natural_grad_update(acc_stats, lrate)
+            # Update the parameters.
+            self.model.prior.natural_grad_update(acc_stats, lrate)
 
         # Rescale the gradients.
         for grad in grads:
             grad /= total_n_frames
 
         # Update the parameters of the VAE.
-        self.model.adam_sga_update(
-            *grads,
-            self.b1,
-            self.b2,
-            self.lrate,
-            time_step
+        self.adam_update(
+            self.pmean,
+            self.pvar,
+            self.model.params,
+            grads,
+            time_step,
+            self.lrate
         )
 
-        return elbo, kl_div
+        #params_p = self.model.prior.get_params()
+        #self.adam_update(
+        #    self.pmean_p,
+        #    self.pvar_p,
+        #    params_p,
+        #    grads_p,
+        #    time_step,
+        #    self.lrate_prior,
+        #)
+        #self.model.prior.set_params(params_p)
+
+    def validate(self, fea_list):
+        # Propagate the model to all the remote clients.
+        self.dview.push({
+            'model': self.model,
+        })
+
+        # Parallel computation of the gradients.
+        res = self.dview.map_sync(SVAEAdamSGAInference.objective, fea_list)
+
+        exp_llh = res[0][0]
+        n_frames = res[0][1]
+        for val1, val2 in res[1:]:
+            exp_llh += val1
+            n_frames += val2
+
+        kl_div = self.model.prior.kl_div_posterior_prior()
+
+        return (exp_llh - kl_div) / n_frames
 

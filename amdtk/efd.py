@@ -327,6 +327,36 @@ class LatentEFD(PersistentModel, metaclass=abc.ABCMeta):
        """Method called after each update."""
        pass
 
+    def get_gradients(self, acc_stats):
+        grads = []
+
+        grad = self.prior.natural_params + acc_stats[0]
+        grad -= self.posterior.natural_params
+        grads.append(grad)
+
+        for idx, stats in enumerate(acc_stats[1]):
+            comp = self.components[idx]
+            grad = comp.prior.natural_params + stats
+            grad -= comp.posterior.natural_params
+            grads.append(grad)
+
+        return grads
+
+    def get_params(self):
+        params = []
+        params.append(self.posterior.natural_params)
+        for comp in self.components:
+            params.append(comp.posterior.natural_params)
+
+        return params
+
+    def set_params(self, params):
+        self.posterior.natural_params = params[0]
+        for idx in range(len(params[1:])):
+            self.components[idx].posterior.natural_params = params[idx+1]
+
+        self.vb_post_update()
+
     def natural_grad_update(self, acc_stats, lrate):
         grad = self.prior.natural_params + acc_stats[0]
         grad -= self.posterior.natural_params

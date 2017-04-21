@@ -26,127 +26,58 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import abc
 from collections import OrderedDict
-import numpy as np
-import theano
-import theano.tensor as T
+import autograd.numpy as np
 
 
-def _linear(x):
-    """Linear activation. Do nothing on the input."""
-    return x
+def relu(x):
+    """Rectified Linear activation."""
+    return np.maximum(x, 0)
 
 
-# Possible activation for the hidden units.
-ACTIVATIONS = {
-    'sigmoid': T.nnet.sigmoid,
-    'tanh': T.tanh,
-    'relu': T.nnet.relu,
-    'linear': _linear
-}
+def init_weights_matrix(dim_in, dim_out, scale=1.):
+    return np.random.normal(0, scale * 0.01, size=(dim_in, dim_out))
 
 
-class MLPError(Exception):
-    """Base class for exceptions in this module."""
-
-    pass
+def init_bias(dim, shift=0.):
+    return np.zeros(dim, dtype=float) + shift
 
 
-class UnkownActivationError(MLPError):
-    """Raised when the given activation is not known."""
-
-    def __init__(self, activation):
-        """Initialize the exception.
-
-        Parameters
-        ----------
-        activation : str
-            Name of the activation.
-
-        """
-        self.activation = str(activation)
-
-    def __str__(self):
-        """Description of the exception.
-
-        Returns
-        -------
-        msg : str
-            Error message.
-
-        """
-        return '"' + self.activation + '" is not one of the pre-defined " \
-            "activations: "' + '", "'.join(ACTIVATIONS.keys()) + '"'
-
-
-def _init_weights_matrix(dim_in, dim_out, activation, borrow=True):
-    if activation == 'sigmoid':
-        retval = 4 * np.random.uniform(
-            low=-np.sqrt(6. / (dim_in + dim_out)),
-            high=np.sqrt(6. / (dim_in + dim_out)),
-            size=(dim_in, dim_out)
-        )
-    elif activation == 'tanh':
-        retval = np.random.uniform(
-            low=-np.sqrt(6. / (dim_in + dim_out)),
-            high=np.sqrt(6. / (dim_in + dim_out)),
-            size=(dim_in, dim_out)
-        )
-    elif activation == 'relu':
-        val = np.sqrt(12 / (dim_in + dim_out))
-        retval = np.random.uniform(low=-val, high=val, size=(dim_in, dim_out))
-    elif activation == 'linear':
-        #val = np.sqrt(12 / (dim_in + dim_out))
-        #retval = np.random.uniform(low=-val, high=val, size=(dim_in, dim_out))
-        retval = np.random.normal(
-            0.,
-            .01,
-            size=(dim_in, dim_out)
-        )
-    else:
-        raise UnkownActivationError(activation)
-
-    return theano.shared(np.asarray(retval, dtype=theano.config.floatX),
-                         borrow=borrow)
-
-
-def _init_bias(dim, borrow=True):
-    return theano.shared(np.zeros(dim, dtype=theano.config.floatX) + 0.1,
-                         borrow=borrow)
+def gauss_nnet_forward(params, x):
+    logvar_b = params[-1]
+    logvar_w = params[-2]
+    mean_b = params[-3]
+    mean_w = params[-4]
 
 
 class HiddenLayer(object):
     """Hidden Layer of a Neural Net structure."""
 
-    def __init__(self, input, dim_in, dim_out, activation):
+    def __init__(self, dim_in, dim_out):
         """Initialize a hidden layer of a MLP.
 
         Parameters
         ----------
-        input : theano variable
-            Symbolic variatble of the input to the hidden layer.
         dim_in : int
             Dimension of the input.
         dim_out : int
             Dimension of the output.
-        activation : function
-            Non-linear actication of the hidden layer.
 
         """
         # Initialize the weight matrix and the bias vector.
         weights = _init_weights_matrix(dim_in, dim_out, activation)
         bias = _init_bias(dim_out)
 
-        # Symbolic computation of the hidden layer.
-        self.output = ACTIVATIONS[activation](T.dot(input, weights) + bias)
-
         # Parameters to update.
         self.params = [weights, bias]
+
+    def forward(self, x):
+        """Forward an input through the hidden layer."""
 
 
 class MLP(metaclass=abc.ABCMeta):
     """Abstract base class for MLP object."""
 
-    def __init__(self, input, dim_in, n_layers, n_units, activation):
+    def __init__(self, dim_in, n_layers, n_units):
         """Create and initialize the basic structure of the MLP.
 
         Parameters
@@ -193,7 +124,7 @@ class MLP(metaclass=abc.ABCMeta):
             self.params += self.layers[-1].params
 
         # Define the output as the one of the last layer. This may
-        # be override by subclasses.
+        # be overriden by subclasses.
         self.output = self.layers[-1].output
 
 
@@ -232,10 +163,8 @@ class MLPGaussian(metaclass=abc.ABCMeta):
             input=self.layers[-1].output,
             dim_in=n_units,
             dim_out=dim_out,
-            activation='linear')
-        #values = np.random.normal(0., 1., (n_units, dim_out))
-        #values = np.asarray(values, dtype=theano.config.floatX)
-        #self.mean_layer.params[0].set_value(values)
+            activation='linear'
+        )
         self.params += self.mean_layer.params
         self.mean = self.mean_layer.output
 
@@ -243,11 +172,11 @@ class MLPGaussian(metaclass=abc.ABCMeta):
             input=self.layers[-1].output,
             dim_in=n_units,
             dim_out=dim_out,
-            activation='linear')
-        #values = np.asarray(np.zeros(dim_out) - 10., dtype=theano.config.floatX)
-        #self.log_var_layer.params[1].set_value(values)
+            activation='linear'
+        )
         self.params += self.log_var_layer.params
         self.log_var = self.log_var_layer.output
 
         # Defines the output as the mean the log variance concatenated.
         self.output = T.concatenate([self.mean, self.log_var])
+

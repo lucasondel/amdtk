@@ -25,11 +25,17 @@ DEALINGS IN THE SOFTWARE.
 
 """
 
-import numpy as np
-import theano
-import theano.tensor as T
-from scipy.special import digamma
+import autograd.numpy as np
+from autograd.scipy.special import gammaln
+from autograd import grad
 from .efd import EFDPrior
+
+
+def _log_partition_func(np1):
+    return np.sum(gammaln(np1 + 1.)) - gammaln(np.sum(np1 + 1))
+
+
+_grad_log_partition_func = grad(_log_partition_func)
 
 
 class Dirichlet(EFDPrior):
@@ -46,50 +52,28 @@ class Dirichlet(EFDPrior):
 
         """
         # Natural parameters.
-        self._np1 = theano.shared(
-            np.asarray(prior_counts - 1, dtype=theano.config.floatX),
-            borrow=True
-        )
-        self._natural_params = self._np1.get_value()
+        self._np1 = np.asarray(prior_counts - 1, dtype=float)
+        self._natural_params = self._np1
 
         # Compile the model.
         self._build()
 
     def _build(self):
-        self._natural_params = self._np1.get_value()
-
-        log_Z, self._log_partition_func = \
-            Dirichlet._get_log_partition_func(self._np1)
-        self._log_partition = self._log_partition_func()
-
-
-        self._grad_log_partition_func = \
-            Dirichlet._get_grad_log_partition_func(log_Z, self._np1)
-        self._grad_log_partition = self._grad_log_partition_func()
-
-    @staticmethod
-    def _get_log_partition_func(np1):
-        log_Z = T.sum(T.gammaln(np1 + 1.)) - T.gammaln(T.sum(np1 + 1))
-        return log_Z, theano.function([], log_Z)
-
-    @staticmethod
-    def _get_grad_log_partition_func(log_Z, np1):
-        gradients = T.grad(log_Z, np1)
-        return theano.function([], outputs=gradients)
+        self._natural_params = self._np1
+        self._log_partition = _log_partition_func(self._np1)
+        self._grad_log_partition = _grad_log_partition_func(self._np1)
 
     # PersistentModel interface implementation.
     # -----------------------------------------------------------------
 
     def to_dict(self):
-        return {'np1': self._np1.get_value()}
+        return {'np1': self._np1}
 
     @staticmethod
     def load_from_dict(model_data):
         model = Dirichlet.__new__(Dirichlet)
-        np1 = theano.shared(model_data['np1'], borrow=True)
-        model._np1 = np1
+        model._np1 = model_data['np1']
         model._build()
-
         return model
 
     # EFDPrior interface implementation.
@@ -102,9 +86,9 @@ class Dirichlet(EFDPrior):
     @natural_params.setter
     def natural_params(self, value):
         self._natural_params = value
-        self._np1.set_value(value)
-        self._log_partition = self._log_partition_func()
-        self._grad_log_partition = self._grad_log_partition_func()
+        self._np1 = value
+        self._log_partition = _log_partition_func(self._np1)
+        self._grad_log_partition = _grad_log_partition_func(self._np1)
 
     @property
     def log_partition(self):

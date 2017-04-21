@@ -51,10 +51,23 @@ DEALINGS IN THE SOFTWARE.
 #
 
 
-import numpy as np
-import theano
-import theano.tensor as T
+import autograd.numpy as np
+from autograd.scipy.special import gammaln
+from autograd import grad
 from .efd import EFDPrior
+
+
+def _log_partition_func(np1, np2, np3, np4):
+    log_Z = np.sum(gammaln(.5 * (np4 + 1)))
+    log_Z += np.sum(- .5 * (np4 + 1) * np.log(.5 * (np1 - (np2 ** 2) / np3)))
+    log_Z += np.sum(-.5 * np.log(np3))
+    return log_Z
+
+
+_grad_log_partition_func0 = grad(_log_partition_func, argnum=0)
+_grad_log_partition_func1 = grad(_log_partition_func, argnum=1)
+_grad_log_partition_func2 = grad(_log_partition_func, argnum=2)
+_grad_log_partition_func3 = grad(_log_partition_func, argnum=3)
 
 
 class NormalGamma(EFDPrior):
@@ -76,84 +89,59 @@ class NormalGamma(EFDPrior):
 
         """
         # Natural parameters.
-        np1 = theano.shared(
-                np.asarray(kappa * (mean ** 2) + 2 * scale,
-                           dtype=theano.config.floatX),
-                borrow=True
-        )
-        np2 = theano.shared(
-                np.asarray(kappa * mean, dtype=theano.config.floatX),
-                borrow=True
-        )
-        np3 = theano.shared(
-                np.asarray(kappa, dtype=theano.config.floatX),
-                borrow=True
-        )
-        np4 = theano.shared(
-                np.asarray(2 * (rate - 1./2), dtype=theano.config.floatX),
-                borrow=True
-        )
-        self._nparams = [np1, np2, np3, np4]
+        self._nparams = [
+            np.asarray(kappa * (mean ** 2) + 2 * scale, dtype=float),
+            np.asarray(kappa * mean, dtype=float),
+            np.asarray(kappa, dtype=float),
+            np.asarray(2 * (rate - 1./2), dtype=float)
+        ]
 
         # Compile the model.
         self._build()
 
     def _build(self):
         self._natural_params = np.hstack([
-            self._nparams[0].get_value(),
-            self._nparams[1].get_value(),
-            self._nparams[2].get_value(),
-            self._nparams[3].get_value()
+            self._nparams[0],
+            self._nparams[1],
+            self._nparams[2],
+            self._nparams[3]
         ])
 
-        log_Z, self._log_partition_func = \
-            NormalGamma._get_log_partition_func(self._nparams)
-        self._log_partition = self._log_partition_func()
+        self._log_partition = _log_partition_func(*self._nparams)
 
-
-        self._grad_log_partition_func = \
-            NormalGamma._get_grad_log_partition_func(log_Z, self._nparams)
-        self._grad_log_partition = self._grad_log_partition_func()
-
-    @staticmethod
-    def _get_log_partition_func(nparams):
-        np1, np2, np3, np4 = nparams
-        log_Z = T.gammaln(.5 * (np4 + 1))
-        log_Z += - .5 * (np4 + 1) * T.log(.5 * (np1 - (np2 ** 2) / np3))
-        log_Z += -.5 * T.log(np3)
-        log_Z = T.sum(log_Z)
-        return log_Z, theano.function([], log_Z)
-
-    @staticmethod
-    def _get_grad_log_partition_func(log_Z, nparams):
-        gradients = T.grad(log_Z, nparams)
-        return theano.function([], outputs=T.concatenate(gradients))
+        self._grad_log_partition = np.r_[
+            _grad_log_partition_func0(*self._nparams),
+            _grad_log_partition_func1(*self._nparams),
+            _grad_log_partition_func2(*self._nparams),
+            _grad_log_partition_func3(*self._nparams),
+        ]
 
     # PersistentModel interface implementation.
-    # ------------------------------------------------------------------
+    # -----------------------------------------------------------------
 
     def to_dict(self):
         return {
-            'np1': self._nparams[0].get_value(),
-            'np2': self._nparams[1].get_value(),
-            'np3': self._nparams[2].get_value(),
-            'np4': self._nparams[3].get_value(),
+            'np1': self._nparams[0],
+            'np2': self._nparams[1],
+            'np3': self._nparams[2],
+            'np4': self._nparams[3],
         }
 
     @staticmethod
     def load_from_dict(model_data):
         model = NormalGamma.__new__(NormalGamma)
-        np1 = theano.shared(model_data['np1'], borrow=True)
-        np2 = theano.shared(model_data['np2'], borrow=True)
-        np3 = theano.shared(model_data['np3'], borrow=True)
-        np4 = theano.shared(model_data['np4'], borrow=True)
-        model._nparams = [np1, np2, np3, np4]
+        model._nparams = [
+            model_data['np1'],
+            model_data['np2'],
+            model_data['np3'],
+            model_data['np4']
+        ]
         model._build()
 
         return model
 
     # EFDPrior interface implementation.
-    # ------------------------------------------------------------------
+    # -----------------------------------------------------------------
 
     @property
     def natural_params(self):
@@ -165,12 +153,16 @@ class NormalGamma(EFDPrior):
 
         # Update the log-partition and its gradient.
         nparams = value.reshape(4, -1)
-        self._nparams[0].set_value(nparams[0])
-        self._nparams[1].set_value(nparams[1])
-        self._nparams[2].set_value(nparams[2])
-        self._nparams[3].set_value(nparams[3])
-        self._log_partition = self._log_partition_func()
-        self._grad_log_partition = self._grad_log_partition_func()
+        self._nparams = [np.asarray(param, dtype=float) for param in nparams]
+        self._log_partition = _log_partition_func(*self._nparams)
+
+        # Update the expected value of the sufficient statistics.
+        self._grad_log_partition = np.r_[
+            _grad_log_partition_func0(*self._nparams),
+            _grad_log_partition_func1(*self._nparams),
+            _grad_log_partition_func2(*self._nparams),
+            _grad_log_partition_func3(*self._nparams),
+        ]
 
     @property
     def log_partition(self):
@@ -180,5 +172,5 @@ class NormalGamma(EFDPrior):
     def grad_log_partition(self):
         return self._grad_log_partition
 
-    # ------------------------------------------------------------------
+    # -----------------------------------------------------------------
 
