@@ -1,3 +1,4 @@
+
 """
 Utilities for MLP object.
 
@@ -25,158 +26,137 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
 import abc
-from collections import OrderedDict
 import autograd.numpy as np
 
 
-def relu(x):
-    """Rectified Linear activation."""
-    return np.maximum(x, 0)
-
-
-def init_weights_matrix(dim_in, dim_out, scale=1.):
-    return np.random.normal(0, scale * 0.01, size=(dim_in, dim_out))
-
-
-def init_bias(dim, shift=0.):
-    return np.zeros(dim, dtype=float) + shift
-
-
-def gauss_nnet_forward(params, x):
-    logvar_b = params[-1]
-    logvar_w = params[-2]
-    mean_b = params[-3]
-    mean_w = params[-4]
-
-
-class HiddenLayer(object):
-    """Hidden Layer of a Neural Net structure."""
-
-    def __init__(self, dim_in, dim_out):
-        """Initialize a hidden layer of a MLP.
-
-        Parameters
-        ----------
-        dim_in : int
-            Dimension of the input.
-        dim_out : int
-            Dimension of the output.
-
-        """
-        # Initialize the weight matrix and the bias vector.
-        weights = _init_weights_matrix(dim_in, dim_out, activation)
-        bias = _init_bias(dim_out)
-
-        # Parameters to update.
-        self.params = [weights, bias]
-
-    def forward(self, x):
-        """Forward an input through the hidden layer."""
-
-
 class MLP(metaclass=abc.ABCMeta):
-    """Abstract base class for MLP object."""
+    """Base class for MLP objects."""
 
-    def __init__(self, dim_in, n_layers, n_units):
-        """Create and initialize the basic structure of the MLP.
+    @staticmethod
+    def init_layer_params(dim_in, dim_out, scale):
+        """Initialize a weights matrix and bias vector."""
+        weights = np.random.randn(dim_in, dim_out)
+        bias = np.zeros(dim_out)
+        return [scale * weights, bias]
 
-        Parameters
-        ----------
-        input : theano variable
-            Input to the MLP.
-        dim_in : int
-            Dimension of the input.
-        n_layers : int
-            Number of hidden layers.
-        n_units : int
-            Number of units per layer.
-        activation : str
-            Name of the activation for the hiddent units. Can be one of
-            the following:
-              * sigmoid
-              * tanh
-              * relu
-              * linear
+    @staticmethod
+    def forward(params, activation, data):
+        """Forward an input matrix through the Gaussian residual MLP."""
+        inputs = data
+        for idx in range(0, len(params), 2):
+            weights = params[idx]
+            bias = params[idx + 1]
+            outputs = np.dot(inputs, weights) + bias
+            inputs = activation(outputs)
+        return inputs
 
-        """
-        # Parameters to update during the training.
-        self.params = []
+class GaussianMLP(MLP):
+    """Static implementation of a Gaussian residual MLP."""
 
-        # Symbolic variable of the input.
-        self.input = input
+    @staticmethod
+    def create(dim_in, dim_out, dim_h, n_layers, scale):
+        """Create a Gaussian residual MLP."""
+        params = MLP.init_layer_params(dim_in, dim_h, scale)
+        for idx in range(n_layers - 1):
+            params += MLP.init_layer_params(dim_h, dim_h, scale)
+        params += MLP.init_layer_params(dim_h, 2 * dim_out, scale)
+        return params
 
-        # Create the first hidden layer.
-        self.layers = [HiddenLayer(
-            input=self.input,
-            dim_in=dim_in,
-            dim_out=n_units,
-            activation=activation
-        )]
-        self.params += self.layers[0].params
+    @staticmethod
+    def extract_params(params):
+        """Extract the different part of the Gaussian MLP."""
+        return [params[-2:], params[:-2]]
 
-        # Add other layer if there are any.
-        for i in range(1, n_layers):
-            self.layers.append(HiddenLayer(
-                input=self.layers[-1].output,
-                dim_in=n_units,
-                dim_out=n_units,
-                activation=activation))
-            self.params += self.layers[-1].params
+    @staticmethod
+    def forward(params, activation, data):
+        """Forward an input matrix through the Gaussian residual MLP."""
+        linear_params, h_params = GaussianMLP.extract_params(params)
+        inputs = MLP.forward(h_params, activation, data)
+        outputs = np.dot(inputs, linear_params[0]) + linear_params[1]
+        mean, logvar = np.split(outputs, 2, axis=-1)
+        var = np.log(1 + np.exp(logvar))
+        return mean, var
 
-        # Define the output as the one of the last layer. This may
-        # be overriden by subclasses.
-        self.output = self.layers[-1].output
+    @staticmethod
+    def natural_params(mean, var):
+        np1 = - 1 / (2 * var)
+        np2 = mean / var
+        return np1, np2
+
+    @staticmethod
+    def std_params(np1, np2):
+        var = -1 / (2 * np1)
+        mean = np2 * var
+        return mean, var
 
 
-class MLPGaussian(metaclass=abc.ABCMeta):
-    """Abstract base class for MLP with Gaussian output."""
+class GaussianResidualMLP(GaussianMLP):
+    """Static implementation of a Gaussian residual MLP."""
 
-    def __init__(self, input, dim_in, dim_out, n_layers, n_units, activation):
-        """Create and initialize the basic structure of the MLP.
+    @staticmethod
+    def init_residual_params(dim_in, dim_out):
+        """Partial isometry initialization."""
+        d = max(dim_in, dim_out)
+        weights = np.linalg.qr(np.random.randn(d,d))[0][:dim_in,:dim_out]
+        return [weights]
 
-        Parameters
-        ----------
-        input : theano variable
-            Input to the MLP.
-        dim_in : int
-            Dimension of the input.
-        dim_out : int
-            Dimension of the output.
-        n_layers : int
-            Number of hidden layers.
-        n_units : int
-            Number of units per layer.
-        activation : str
-            Name of the activation for the hiddent units. Can be one of
-            the following:
-              * sigmoid
-              * tanh
-              * relu
-              * linear
+    @staticmethod
+    def create(dim_in, dim_out, dim_h, n_layers, scale):
+        """Create a Gaussian residual MLP."""
+        params = GaussianMLP.create(dim_in, dim_out, dim_h, n_layers, scale)
+        params += GaussianResidualMLP.init_residual_params(dim_in, dim_out)
+        return params
 
-        """
-        # Initialize the MLP structure.
-        MLP.__init__(self, input, dim_in, n_layers, n_units, activation)
+    @staticmethod
+    def forward(params, activation, data):
+        """Forward an input matrix through the Gaussian residual MLP."""
+        gauss_params, res_params = params[:-1], params[-1]
+        mean, var = GaussianMLP.forward(gauss_params, activation, data)
+        mean = mean + np.dot(data, res_params)
+        return mean, var
 
-        # Create the output final layer (mean and log of the variance).
-        self.mean_layer = HiddenLayer(
-            input=self.layers[-1].output,
-            dim_in=n_units,
-            dim_out=dim_out,
-            activation='linear'
-        )
-        self.params += self.mean_layer.params
-        self.mean = self.mean_layer.output
+    @staticmethod
+    def _kl_div(mean_post, var_post, mean_prior, var_prior):
+        """KL divergence between the posterior and the prior."""
+        kl_div = (.5 * (mean_prior - mean_post)**2) / var_prior
+        ratio = var_post / var_prior
+        kl_div = kl_div + .5 * (ratio - 1 - np.log(ratio))
+        return np.sum(kl_div, axis=1)
 
-        self.log_var_layer = HiddenLayer(
-            input=self.layers[-1].output,
-            dim_in=n_units,
-            dim_out=dim_out,
-            activation='linear'
-        )
-        self.params += self.log_var_layer.params
-        self.log_var = self.log_var_layer.output
+    @staticmethod
+    def sample(params, activation, inputs, prior_params=None):
+        """Sample from the Gaussian residual MLP."""
+        mean, var = GaussianResidualMLP.forward(params, activation, inputs)
+        eps = np.random.randn(*inputs.shape)
+        samples = mean + np.sqrt(var) * eps
+        if prior_params is not None:
+            kl_div = GaussianResidualMLP._kl_div(mean, var, prior_params[0],
+                                                 prior_params[1])
+            return samples, kl_div
 
-        # Defines the output as the mean the log variance concatenated.
-        self.output = T.concatenate([self.mean, self.log_var])
+        return samples
+
+    @staticmethod
+    def sample_np(params, activation, inputs, exp_np1, exp_np2):
+        """Sample from the Gaussian residual MLP with nat. params."""
+        mean, var = GaussianResidualMLP.forward(params, activation, inputs)
+        np1, np2 = GaussianMLP.natural_params(mean, var)
+        prior_mean, prior_var = GaussianMLP.std_params(exp_np1, exp_np2)
+        post_mean, post_var = GaussianMLP.std_params(np1 + exp_np1,
+                                                     np2 + exp_np2)
+        eps = np.random.randn(*inputs.shape)
+        samples = post_mean + np.sqrt(post_var) * eps
+        kl_div = GaussianResidualMLP._kl_div(post_mean, post_var, prior_mean,
+                                             prior_var)
+        return samples, kl_div
+
+
+    @staticmethod
+    def llh(params, activation, inputs, targets):
+        """Log-likelihood of the Gaussian residual MLP."""
+        mean, var = GaussianResidualMLP.forward(params, activation, inputs)
+        N, D = targets.shape
+        retval = -.5 * np.sum(np.log(var), axis=1)
+        retval = retval - .5 * np.sum(((targets - mean) ** 2) / var, axis=1)
+        return retval
 

@@ -281,16 +281,6 @@ class PhoneLoop(LatentEFD, SVAEPrior):
     # LatentEFD interface implementation.
     # -----------------------------------------------------------------
 
-    def vb_e_step(self, data):
-        # Sufficient statistics of the data.
-        s_stats = self.get_sufficient_stats(data)
-
-        # Compute the per-frame responsibilities.
-        log_norm, resps, model_data = self.get_resps(s_stats)
-
-        # Accumulate the statistics.
-        return log_norm, self.accumulate_stats(s_stats, resps, model_data)
-
     def vb_post_update(self):
         self._build()
 

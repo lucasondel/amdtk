@@ -25,6 +25,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
 import abc
+import numpy as np
 from .model import PersistentModel
 
 
@@ -62,9 +63,6 @@ class EFDStats(object):
 class EFDPrior(PersistentModel, metaclass=abc.ABCMeta):
     """Abstract base class for a prior from the EFD."""
 
-    # Abstract interface.
-    # ------------------------------------------------------------------
-
     @abc.abstractproperty
     def natural_params(self):
         """Vector of natural parameters."""
@@ -86,7 +84,17 @@ class EFDPrior(PersistentModel, metaclass=abc.ABCMeta):
         """
         pass
 
-    # ------------------------------------------------------------------
+    @abc.abstractmethod
+    def evaluate_log_partition(self, natural_params):
+        """Evaluate the log-parition.
+
+        Parameters
+        ----------
+        natural_params : numpy.ndarray
+            Natural parameters of the distribution.
+
+        """
+        pass
 
     def kl_div(self, dist):
         """Kullback-Leibler divergence.
@@ -169,19 +177,6 @@ class EFDLikelihood(PersistentModel, metaclass=abc.ABCMeta):
     def posterior(self, value):
         self._posterior = value
 
-    # Abstract interface.
-    # -----------------------------------------------------------------
-
-    def update_posterior(self, acc_stats):
-        """Update the posterior distribution.
-
-        Parameters
-        ----------
-        acc_stats : numpy.ndarray
-            Accumulated sufficient statistics.
-
-        """
-        self.posterior.natural_params = self.prior.natural_params + acc_stats
 
     # PersistentModel interface implementation.
     # -----------------------------------------------------------------
@@ -211,13 +206,79 @@ class EFDLikelihood(PersistentModel, metaclass=abc.ABCMeta):
     # -----------------------------------------------------------------
 
 
-class LatentEFD(PersistentModel, metaclass=abc.ABCMeta):
+class SVAEPrior(PersistentModel, metaclass=abc.ABCMeta):
+    """Abstract base class for SVAE prior."""
+
+    def init_resps(self, n_frames):
+        """Get the initialize per-frame responsibilities.
+
+        Parameters
+        ----------
+        n_frames : numpy.ndarray,
+            Number of frames for the mini-batch.
+
+        Returns
+        -------
+        resps : numpy.ndarray
+            Initial per-frame responsibilities.
+
+        """
+        prob = 1. / len(self.components)
+        return np.ones((n_frames, len(self.components))) * prob
+
+    @abc.abstractmethod
+    def get_resps(self, s_stats, output_llh=False):
+        """Get the components' responisbilities.
+
+        Parameters
+        ----------
+        s_stats : numpy.ndarray,
+            Sufficient statistics.
+        output_llh : boolean
+            If True, returns the per component log-likelihood.
+
+        Returns
+        -------
+        log_norm : numpy.ndarray
+            Per-frame log normalization constant.
+        resps : numpy.ndarray
+            Responsibilities.
+        model_data : object
+            Model speficic data for the training.
+
+        """
+        pass
+
+    @abc.abstractmethod
+    def accumulate_stats(self, s_stats, resps, model_data):
+        """Accumulate the sufficient statistics.
+
+        Parameters
+        ----------
+        s_stats : numpy.ndarray
+            Sufficient statistics.
+        resps : numpy.ndarray
+            Per-frame responsibilities.
+        model_data : object
+            Model speficic data for the training.
+
+        Returns
+        -------
+        acc_stats : :class:`EFDStats`
+            Accumulated sufficient statistics.
+
+        """
+        pass
+
+
+class LatentEFD(SVAEPrior, metaclass=abc.ABCMeta):
     """Abstract base class for model with latent EFD model."""
 
     def __init__(self, prior, posterior, components):
         self._prior = prior
         self._posterior = posterior
         self._components = components
+        self._p_matrix = self.get_components_params_matrix()
 
     @property
     def prior(self):
@@ -246,6 +307,28 @@ class LatentEFD(PersistentModel, metaclass=abc.ABCMeta):
     def components(self, value):
         self._components = value
 
+    @property
+    def components_params_matrix(self):
+        """Matrix of components' parameters."""
+        return self._p_matrix
+
+    @components_params_matrix.setter
+    def components_params_matrix(self, value):
+        self._p_matrix = value
+
+    def get_components_params_matrix(self):
+        """Get the matrix of parameters for fast evaluation.
+
+        Returns
+        -------
+        p_matrix : numpy.ndarray
+            Matrix where ith row is the expected value of the the
+            natural parameters of the ith component.
+
+        """
+        return np.vstack([comp.posterior.grad_log_partition
+                          for idx, comp in enumerate(self.components)])
+
     def get_sufficient_stats(self, data):
         """Sufficient statistics of the latent model.
 
@@ -267,6 +350,17 @@ class LatentEFD(PersistentModel, metaclass=abc.ABCMeta):
         s_stats = cls.get_sufficient_stats(data)
         return s_stats
 
+    def components_exp_llh(self, s_stats):
+        """Per components expected log-likelihood.
+
+        Parameters
+        ----------
+        s_stats : numpy.ndarray
+            (NxD) matrix of sufficient statistics.
+
+        """
+        return self.components_params_matrix.dot(s_stats.T)
+
     def kl_div_posterior_prior(self):
         """Kullback-Leibler divergence between prior /posterior.
 
@@ -282,7 +376,6 @@ class LatentEFD(PersistentModel, metaclass=abc.ABCMeta):
             retval += comp.posterior.kl_div(comp.prior)
         return retval
 
-    @abc.abstractmethod
     def vb_e_step(self, data):
         """E-step of the standard Variational Bayes algorithm.
 
@@ -301,7 +394,10 @@ class LatentEFD(PersistentModel, metaclass=abc.ABCMeta):
             Accumulated sufficient statistics.
 
         """
-        pass
+        s_stats = self.get_sufficient_stats(data)
+        log_norm, resps, model_data = self.get_resps(s_stats)
+        return log_norm, self.accumulate_stats(s_stats, resps, model_data)
+
 
     def vb_m_step(self, acc_stats):
         """M-step of the standard Variational Bayes algorithm.
@@ -322,42 +418,13 @@ class LatentEFD(PersistentModel, metaclass=abc.ABCMeta):
         self.vb_post_update()
 
 
-    @abc.abstractmethod
     def vb_post_update(self):
        """Method called after each update."""
-       pass
+       self.components_params_matrix = self.get_components_params_matrix()
 
-    def get_gradients(self, acc_stats):
-        grads = []
-
-        grad = self.prior.natural_params + acc_stats[0]
-        grad -= self.posterior.natural_params
-        grads.append(grad)
-
-        for idx, stats in enumerate(acc_stats[1]):
-            comp = self.components[idx]
-            grad = comp.prior.natural_params + stats
-            grad -= comp.posterior.natural_params
-            grads.append(grad)
-
-        return grads
-
-    def get_params(self):
-        params = []
-        params.append(self.posterior.natural_params)
-        for comp in self.components:
-            params.append(comp.posterior.natural_params)
-
-        return params
-
-    def set_params(self, params):
-        self.posterior.natural_params = params[0]
-        for idx in range(len(params[1:])):
-            self.components[idx].posterior.natural_params = params[idx+1]
-
-        self.vb_post_update()
 
     def natural_grad_update(self, acc_stats, lrate):
+        """Natural gradient update."""
         grad = self.prior.natural_params + acc_stats[0]
         grad -= self.posterior.natural_params
         self.posterior.natural_params = \

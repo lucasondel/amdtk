@@ -14,6 +14,8 @@ from .internal_io import write_mlf
 from .internal_io import read_ctm
 from .internal_io import write_eval_to_clusters
 
+from .mlp_utils import GaussianResidualMLP
+
 from .dirichlet import Dirichlet
 
 from .model import PersistentModel
@@ -22,10 +24,10 @@ from .efd import EFDStats
 from .efd import EFDPrior
 from .efd import EFDLikelihood
 
-from .inference import Inference
-from .inference import StochasticVBInference
-from .inference import AdamSGAInference
-from .inference import SVAEAdamSGAInference
+from .inference import Optimizer
+from .inference import StochasticVBOptimizer
+from .inference import AdamSGAOptimizer
+from .inference import SVAEAdamSGAOptimizer
 
 from .mixture import Mixture
 
@@ -37,8 +39,6 @@ from .normal_gamma import NormalGamma
 from .normal_wishart import NormalWishart
 
 from .phone_loop import PhoneLoop
-
-from .sga_training import AdamSGATheano
 
 from .svae_prior import SVAEPrior
 

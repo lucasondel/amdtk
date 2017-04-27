@@ -51,23 +51,27 @@ DEALINGS IN THE SOFTWARE.
 #
 
 
-import autograd.numpy as np
-from autograd.scipy.special import gammaln
-from autograd import grad
+import theano
+import theano.tensor as T
+import numpy as np
 from .efd import EFDPrior
 
 
-def _log_partition_func(np1, np2, np3, np4):
-    log_Z = np.sum(gammaln(.5 * (np4 + 1)))
-    log_Z += np.sum(- .5 * (np4 + 1) * np.log(.5 * (np1 - (np2 ** 2) / np3)))
-    log_Z += np.sum(-.5 * np.log(np3))
-    return log_Z
+def _log_partition_symfunc():
+    natural_params = T.matrix()
+    size = natural_params.shape[1] // 4
+    np1, np2, np3, np4 = T.split(natural_params, 4 * [size], 4, axis=-1)
 
+    log_Z = T.sum(T.gammaln(.5 * (np4 + 1)), axis=1)
+    log_Z += T.sum(- .5 * (np4 + 1) * T.log(.5 * (np1 - (np2 ** 2) / np3)), axis=1)
+    log_Z += T.sum(-.5 * T.log(np3), axis=1)
 
-_grad_log_partition_func0 = grad(_log_partition_func, argnum=0)
-_grad_log_partition_func1 = grad(_log_partition_func, argnum=1)
-_grad_log_partition_func2 = grad(_log_partition_func, argnum=2)
-_grad_log_partition_func3 = grad(_log_partition_func, argnum=3)
+    func = theano.function([natural_params], log_Z)
+    grad_func = theano.function([natural_params],
+                                T.grad(T.sum(log_Z), natural_params))
+    return func, grad_func
+
+_log_partition_func, _grad_log_partition_func = _log_partition_symfunc()
 
 
 class NormalGamma(EFDPrior):
@@ -89,53 +93,32 @@ class NormalGamma(EFDPrior):
 
         """
         # Natural parameters.
-        self._nparams = [
+        self._natural_params = np.hstack([
             np.asarray(kappa * (mean ** 2) + 2 * scale, dtype=float),
             np.asarray(kappa * mean, dtype=float),
             np.asarray(kappa, dtype=float),
             np.asarray(2 * (rate - 1./2), dtype=float)
-        ]
+        ])
 
         # Compile the model.
         self._build()
 
     def _build(self):
-        self._natural_params = np.hstack([
-            self._nparams[0],
-            self._nparams[1],
-            self._nparams[2],
-            self._nparams[3]
-        ])
-
-        self._log_partition = _log_partition_func(*self._nparams)
-
-        self._grad_log_partition = np.r_[
-            _grad_log_partition_func0(*self._nparams),
-            _grad_log_partition_func1(*self._nparams),
-            _grad_log_partition_func2(*self._nparams),
-            _grad_log_partition_func3(*self._nparams),
-        ]
+        natp_mat = self._natural_params[np.newaxis, :]
+        self._log_partition = _log_partition_func(natp_mat)[0]
+        self._grad_log_partition = \
+            _grad_log_partition_func(natp_mat)[0]
 
     # PersistentModel interface implementation.
     # -----------------------------------------------------------------
 
     def to_dict(self):
-        return {
-            'np1': self._nparams[0],
-            'np2': self._nparams[1],
-            'np3': self._nparams[2],
-            'np4': self._nparams[3],
-        }
+        return {'natural_params': self._natural_params}
 
     @staticmethod
     def load_from_dict(model_data):
         model = NormalGamma.__new__(NormalGamma)
-        model._nparams = [
-            model_data['np1'],
-            model_data['np2'],
-            model_data['np3'],
-            model_data['np4']
-        ]
+        model._natural_params = model_data['natural_params']
         model._build()
 
         return model
@@ -150,19 +133,10 @@ class NormalGamma(EFDPrior):
     @natural_params.setter
     def natural_params(self, value):
         self._natural_params = value
-
-        # Update the log-partition and its gradient.
-        nparams = value.reshape(4, -1)
-        self._nparams = [np.asarray(param, dtype=float) for param in nparams]
-        self._log_partition = _log_partition_func(*self._nparams)
-
-        # Update the expected value of the sufficient statistics.
-        self._grad_log_partition = np.r_[
-            _grad_log_partition_func0(*self._nparams),
-            _grad_log_partition_func1(*self._nparams),
-            _grad_log_partition_func2(*self._nparams),
-            _grad_log_partition_func3(*self._nparams),
-        ]
+        natp_mat = value[np.newaxis, :]
+        self._log_partition = _log_partition_func(natp_mat)[0]
+        self._grad_log_partition = \
+            _grad_log_partition_func(natp_mat)[0]
 
     @property
     def log_partition(self):
@@ -171,6 +145,9 @@ class NormalGamma(EFDPrior):
     @property
     def grad_log_partition(self):
         return self._grad_log_partition
+
+    def evaluate_log_partition(self, natural_params):
+        return _log_partition_func(natural_params)
 
     # -----------------------------------------------------------------
 

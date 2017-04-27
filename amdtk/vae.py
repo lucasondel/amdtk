@@ -29,264 +29,143 @@ DEALINGS IN THE SOFTWARE.
 import abc
 import pickle
 import autograd.numpy as np
-from autograd import grad
+from autograd import value_and_grad
+from autograd.core import getval
+from autograd.util import quick_grad_check
 from .model import PersistentModel
-from .mlp_utils import init_weights_matrix
-from .mlp_utils import init_bias
-from .mlp_utils import relu
+from .mlp_utils import GaussianResidualMLP
 
 
-def _vae_forward(params, data):
-    # Forward the input through the hidden layers.
-    inputs = data
-    for idx in range(0, len(params[:-4]), 2):
-        weights = params[idx]
-        bias = params[idx + 1]
-        outputs = np.dot(inputs, weights) + bias
-        inputs = relu(outputs)
-
-    # Get the Gaussian parameters.
-    mean = np.dot(inputs, params[-4]) + params[-3]
-    logvar = np.dot(inputs, params[-2]) + params[-1]
-
-    return mean, logvar
-
-
-def _vae_encode(enc_params, noninf_prior, data):
-    mean, logvar = _vae_forward(enc_params, data)
-
-    # KL divergence between the posterior and the prior distribution
-    # over the latent variable.
-    if not noninf_prior:
-        dim = len(enc_params[-1])
-        #kl_div = .5 * np.sum(-1 - logvar + np.exp(logvar) + mean**2, axis=1)
-        var_prior = np.ones(dim) * 1
-        logvar_prior = np.log(var_prior)
-        var = np.exp(logvar)
-        kl_div = .5 * (logvar_prior - logvar)
-        kl_div += .5 * (mean**2) / var_prior
-        kl_div += .5 * ((var / var_prior) - 1)
-        kl_div = np.sum(kl_div, axis=1)
-    else:
-        # In this case this is just the negative entropy of the
-        # posterior.
-        kl_div = -.5 * np.sum(logvar, axis=1)
-        ###kl_div = 0.
-
-    # Sample using the reparameterization trick.
-    eps = np.random.randn(mean.shape[0], mean.shape[1])
-    latent =  mean + np.exp(.5 * logvar) * eps
-
-    return latent, kl_div
-
-
-def _vae_decode(dec_params, latent, data):
-    mean, logvar = _vae_forward(dec_params, latent)
-    llh = np.sum(-.5 * (logvar + ((mean - data)**2) / np.exp(logvar)),
-                 axis=1)
-    return llh
-
-
-def _vae_sample(dec_params, latent):
-    mean, logvar = _vae_forward(dec_params, latent)
-    eps = np.random.randn(mean.shape[0], mean.shape[1])
-    return mean + np.exp(.5 * logvar) * eps
-
-
-def _vae_elbo(params, noninf_prior, data, mse=False):
-    # Separate encoder/decoder params.
+def _vae_elbo(params, activation, data, prior_params):
     idx = len(params) // 2
-    enc_params = params[:idx]
-    dec_params = params[idx:]
-
-    latent, kl_div = _vae_encode(enc_params, noninf_prior, data)
-    llh = _vae_decode(dec_params, latent, data)
-
-    if mse:
-        return llh.sum()
-    else:
-        return np.sum(llh - kl_div)
+    enc_params, dec_params = params[:idx], params[idx:]
+    latent, kl_div = GaussianResidualMLP.sample(enc_params, activation, data,
+                                                prior_params)
+    llh = GaussianResidualMLP.llh(dec_params, activation, latent, data)
+    return np.sum(llh - kl_div)
 
 
-def _svae_get_nparams(enc_params, data):
-    mean, logvar = _vae_forward(enc_params, data)
-
-    # Convert the Gaussian parameters to the natural parameters.
-    np1 = - 1 / (2 * np.exp(logvar))
-    np2 = mean / (np.exp(logvar))
-    return np1, np2
+_vae_elbo_gradients = value_and_grad(_vae_elbo)
 
 
-def _svae_encode(enc_params, exp_np1, exp_np2, data):
-    # Re-parameterization trick. The reparameterization is slightly
-    # more complex in this case as we have to first convert the
-    # natural parameters into the standard parameters.
-    np1, np2 = _svae_get_nparams(enc_params, data)
-    q_np1 = np1 + exp_np1
-    q_np2 = np2 + exp_np2
-    var = -1. / (2 * q_np1)
-    mean = var * q_np2
-
-    # Sample using the reparameterization trick.
-    eps = np.random.randn(mean.shape[0], mean.shape[1])
-    latent = mean + np.sqrt(var) * eps
-
-    # KL divergence between the posterior and the prior over the latent
-    # features.
-    exp_x1 = (q_np2 ** 2) / (4 * (q_np1 ** 2)) - 1. / (2 * q_np1)
-    exp_x2 = -q_np2 / (2 * q_np1)
-    a_q = np.sum(-.5 * np.log(-2 * q_np1) - (q_np2 ** 2) / (
-                          4 * q_np1), axis=1)
-    a_p = np.sum(-.5 * np.log(-2 * exp_np1) - (exp_np2 ** 2) / (
-                            4 * exp_np1), axis=1)
-    kl_div = np.sum(np1 * exp_x1, axis=1)
-    kl_div += np.sum(np2 * exp_x2, axis=1)
-    kl_div += a_p - a_q
-
-    return latent, kl_div
-
-
-def _svae_elbo(params, exp_np1, exp_np2, data, mse=False):
-    # Separate encoder/decoder params.
+def _svae_elbo(params, activation, prior, exp_np1, exp_np2, num_points,
+               num_batches, data):
     idx = len(params) // 2
-    enc_params = params[:idx]
-    dec_params = params[idx:]
-
-    latent, kl_div = _svae_encode(enc_params, exp_np1, exp_np2, data)
-    llh = _vae_decode(dec_params, latent, data)
-
-    if mse:
-        return np.sum(llh)
-    else:
-        return np.sum(llh - kl_div)
+    enc_params, dec_params = params[:idx], params[idx:]
+    latent, kl_div = GaussianResidualMLP.sample_np(enc_params, activation,
+                                                   data, exp_np1, exp_np2)
+    llh = GaussianResidualMLP.llh(dec_params, activation, latent, data)
+    kl_div_glob = prior.kl_div_posterior_prior()
+    return (num_batches * np.sum(llh - kl_div) - kl_div_glob) / num_points
 
 
-def _svae_sample(dec_params, latent):
-    mean, logvar = _vae_forward(dec_params, latent)
-    eps = np.random.randn(mean.shape[0], mean.shape[1])
-    return mean + np.exp(.5 * logvar) * eps
+_svae_elbo_gradients = value_and_grad(_svae_elbo)
+
+def _pvae_elbo(params, activation, prior, q_np1, q_np2, num_points, num_batches, data):
+    idx = len(params) // 2
+    enc_params, dec_params = params[:idx], params[idx:]
+
+    prior_mean, prior_var = GaussianResidualMLP.std_params(q_np1, q_np2)
+    latent, kl_div = GaussianResidualMLP.sample(enc_params, activation, data,
+                                                (prior_mean, prior_var))
+
+    kl_div_glob = prior.kl_div_posterior_prior()
+
+    #latent, kl_div = GaussianResidualMLP.sample(enc_params, activation, data,
+    #                                            prior_params)
+    llh = GaussianResidualMLP.llh(dec_params, activation, latent, data)
+    return (num_batches * np.sum(llh - kl_div) - kl_div_glob) / num_points
 
 
-# Gradient of the cost function with respect to the parameters.
-_vae_elbo_gradients = grad(_vae_elbo)
-_svae_elbo_gradients = grad(_svae_elbo)
+_pvae_elbo_gradients = value_and_grad(_pvae_elbo)
 
 
 class VAE(PersistentModel):
     """Variational Auto-Encoder."""
 
-    def __init__(self, mean, precision, dim_fea, dim_latent, n_layers, n_units,
-                 non_informative_prior=False):
-        """Initialize a VAE.
-
-        Parameters
-        ----------
-        mean : numpy.ndarray
-            Mean of the data set.
-        precision : numpy.ndarray
-            Precision of the data set.
-        dim_fea : int
-            Dimension of the input features.
-        dim_latent : int
-            Dimension of the latent variable.
-        n_layers : int
-            Number of hidden layers.
-        n_units : int
-            Number of units per layer.
-
-        """
-        self.dim_fea = dim_fea
-        self.dim_latent = dim_latent
-        self.n_layers = n_layers
-        self.n_units = n_units
-        self.non_informative_prior = non_informative_prior
+    def __init__(self, args):
+        self.dim_fea = int(args['dim_fea'])
+        self.dim_latent = int(args['dim_latent'])
+        self.dim_h = int(args['dim_h'])
+        self.n_layers = int(args.get('n_layers', 1))
+        self.scale = float(args.get('scale', 1e-2))
+        self.mean_prior = float(args.get('mean_prior', 0.))
+        self.var_prior = float(args.get('var_prior', 1.))
+        self.params = None
 
         self._build()
 
     def _build(self):
-        # Encoder.
-        # Build the hidden layers.
-        enc_params = [init_weights_matrix(self.dim_fea, self.n_units),
-                       init_bias(self.n_units)]
-        for n in range(self.n_layers - 1):
-            weights = init_weights_matrix(self.n_units, self.n_units)
-            bias = self.n_units
-            enc_params += [weights, bias]
+        self.mean_prior = self.mean_prior * np.ones(self.dim_latent)
+        self.var_prior = self.var_prior * np.ones(self.dim_latent)
 
-        # Create the Gaussian layer.
-        mean_w = init_weights_matrix(self.n_units, self.dim_latent,
-                                     scale=100.)
-        mean_b = init_bias(self.dim_latent)
-        logvar_w = init_weights_matrix(self.n_units, self.dim_latent)
-        logvar_b = init_bias(self.dim_latent, shift=-3.)
-        enc_params += [mean_w, mean_b]
-        enc_params += [logvar_w, logvar_b]
+        enc_params = GaussianResidualMLP.create(
+            self.dim_fea,
+            self.dim_latent,
+            self.dim_h,
+            self.n_layers,
+            self.scale,
+        )
 
-        # Decoder.
-        # Build the hidden layers.
-        dec_params = [init_weights_matrix(self.dim_latent, self.n_units),
-                       init_bias(self.n_units)]
-        for n in range(self.n_layers - 1):
-            weights = init_weights_matrix(self.n_units, self.n_units)
-            bias = self.n_units
-            dec_params += [weights, bias]
-
-        # Create the Gaussian layer.
-        mean_w = init_weights_matrix(self.n_units, self.dim_fea)
-        mean_b = init_bias(self.dim_fea)
-        logvar_w = init_weights_matrix(self.n_units, self.dim_fea)
-        logvar_b = init_bias(self.dim_fea, shift=-5.)
-        dec_params += [mean_w, mean_b]
-        dec_params += [logvar_w, logvar_b]
+        dec_params = GaussianResidualMLP.create(
+            self.dim_latent,
+            self.dim_fea,
+            self.dim_h,
+            self.n_layers,
+            self.scale,
+        )
 
         self.params = enc_params + dec_params
 
-    def encode(self, data):
+    def sample_latent(self, data):
         idx = len(self.params) // 2
         enc_params = self.params[:idx]
-        latent, _ = _vae_encode(enc_params, self.non_informative_prior, data)
-        return latent
+        return GaussianResidualMLP.sample(enc_params, np.tanh, data)
 
     def sample(self, data):
         idx = len(self.params) // 2
-        enc_params = self.params[:idx]
         dec_params = self.params[idx:]
-        latent, _ = _vae_encode(enc_params, self.non_informative_prior, data)
-        rec_data = _vae_sample(dec_params, latent)
-        return rec_data
+        latent = self.sample_latent(data)
+        return GaussianResidualMLP.sample(dec_params, np.tanh, latent)
 
-    def log_likelihood(self, data):
-        llh = _vae_elbo(self.params, self.non_informative_prior, data,
-                         mse=False)
-        return llh
+    def check_grad(self, data):
+        prior_params = (self.mean_prior, self.var_prior)
+        return quick_grad_check(_vae_elbo, self.params, (np.tanh, data, prior_params))
 
     def get_gradients(self, data):
-        return _vae_elbo_gradients(self.params, self.non_informative_prior,
-                                   data)
+        prior_params = (self.mean_prior, self.var_prior)
+        return _vae_elbo_gradients(self.params, np.tanh, data, prior_params)
 
 
     # PersistentModel interface implementation.
     # -----------------------------------------------------------------
 
     def to_dict(self):
+
         return {
             'dim_fea': self.dim_fea,
             'dim_latent': self.dim_latent,
+            'dim_h': self.dim_h,
             'n_layers': self.n_layers,
-            'n_units': self.n_units,
-            'non_informative_prior': self.non_informative_prior,
-            'params': self.params
+            'scale': self.scale,
+            'mean_prior': self.mean_prior[0],
+            'var_prior': self.var_prior[0],
+            'params': self.params,
+            'model_class': self.__class__
         }
 
     @staticmethod
     def load_from_dict(model_data):
-        model = VAE.__new__(VAE)
+        model_cls = model_data['model_class']
+        model = model_cls.__new__(model_cls)
 
-        model.dim_fea = model_data['dim_fea']
-        model.dim_latent = model_data['dim_latent']
-        model.n_layers = model_data['n_layers']
-        model.n_units = model_data['n_units']
-        model.non_informative_prior = model_data['non_informative_prior']
+        model.dim_fea = int(model_data['dim_fea'])
+        model.dim_latent = int(model_data['dim_latent'])
+        model.dim_h = int(model_data['dim_h'])
+        model.n_layers = int(model_data['n_layers'])
+        model.scale = float(model_data['scale'])
+        model.mean_prior = float(model_data['mean_prior'])
+        model.var_prior = float(model_data['var_prior'])
 
         model._build()
         model.params = model_data['params']
@@ -296,155 +175,11 @@ class VAE(PersistentModel):
     # -----------------------------------------------------------------
 
 
-class SVAE(PersistentModel):
-    """Variational Auto-Encoder with GMM."""
+class SVAE(VAE):
+    """Variational Auto-Encoder with structured prior."""
 
-    def __init__(self, dim_fea, dim_latent, n_layers, n_units):
-        """Initialize a VAE.
-
-        Parameters
-        ----------
-        dim_fea : int
-            Dimension of the input features.
-        dim_latent : int
-            Dimension of the latent variable.
-        n_layers : int
-            Number of hidden layers.
-        n_units : int
-            Number of units per layer.
-
-        """
-        self.dim_fea = dim_fea
-        self.dim_latent = dim_latent
-        self.n_layers = n_layers
-        self.n_units = n_units
-
-        # The constructor does not include the prior model as it gives
-        # more flexibility to do operation on the VAE structure or on
-        # the prior separately.
-        self.prior = None
-
-        self._build()
-
-    def _build(self):
-        # Encoder.
-        # Build the hidden layers.
-        enc_params = [init_weights_matrix(self.dim_fea, self.n_units),
-                      init_bias(self.n_units)]
-        for n in range(self.n_layers - 1):
-            weights = init_weights_matrix(self.n_units, self.n_units)
-            bias = self.n_units
-            enc_params += [weights, bias]
-
-        # Create the Gaussian layer.
-        mean_w = init_weights_matrix(self.n_units, self.dim_latent,
-                                     scale=100.)
-        mean_b = init_bias(self.dim_latent)
-        logvar_w = init_weights_matrix(self.n_units, self.dim_latent)
-        logvar_b = init_bias(self.dim_latent, shift=-3)
-        enc_params += [mean_w, mean_b]
-        enc_params += [logvar_w, logvar_b]
-
-        # Decoder.
-        # Build the hidden layers.
-        dec_params = [init_weights_matrix(self.dim_latent, self.n_units),
-                      init_bias(self.n_units)]
-        for n in range(self.n_layers - 1):
-            weights = init_weights_matrix(self.n_units, self.n_units)
-            bias = self.n_units
-            dec_params += [weights, bias]
-
-        # Create the Gaussian layer.
-        mean_w = init_weights_matrix(self.n_units, self.dim_fea, scale=100)
-        mean_b = init_bias(self.dim_fea)
-        logvar_w = init_weights_matrix(self.n_units, self.dim_fea)
-        logvar_b = init_bias(self.dim_fea, shift=-5.)
-        dec_params += [mean_w, mean_b]
-        dec_params += [logvar_w, logvar_b]
-
-        self.params = enc_params + dec_params
-
-    def encode(self, data, exp_np1, exp_np2):
-        idx = len(self.params) // 2
-        enc_params = self.params[:idx]
-        latent, _ = _svae_encode(enc_params, exp_np1, exp_np2, data)
-        return latent
-
-    def sample(self, data, exp_np1, exp_np2):
-        idx = len(self.params) // 2
-        enc_params = self.params[:idx]
-        dec_params = self.params[idx:]
-        latent, _ = _svae_encode(enc_params, exp_np1, exp_np2, data)
-        rec_data = _svae_sample(dec_params, latent)
-        return rec_data
-
-    def log_likelihood(self, data, exp_np1, exp_np2):
-        return _svae_elbo(self.params, exp_np1, exp_np2, data)
-
-    def get_gradients(self, data, exp_np1, exp_np2):
-        return _svae_elbo_gradients(self.params, exp_np1, exp_np2, data)
-
-    def optimize_local_factors(self, data, n_iter=1):
-        """Optimize the local factors q(x) and q(z).
-
-        Parameters
-        ----------
-        data : numpy.ndarray
-            (NxD) matrix where N is the number of frames and D is the
-            dimension of a single features vector.
-        n_iter : int
-            Number of iterations for the optimization.
-
-        Returns
-        -------
-        resps : numpy.ndarray
-            Responsibilities for each component of the mixture.
-        exp_np1 : numpy.ndarray
-            First natural parameters of the optimal q(x).
-        exp_np2 : numpy.ndarray
-            Second natural parameters of the optimal q(x).
-        s_stats : numpy.ndarray
-            Sufficient statistics of the expected value of latent
-            features: E[phi(x)].
-
-        """
-        dim_latent = self.dim_latent
-        # Separate encoder/decoder params.
-        idx = len(self.params) // 2
-        enc_params = self.params[:idx]
-
-        # Expected value of the prior's components parameters.
-        p_np1 = [comp.posterior.grad_log_partition[:dim_latent]
-                 for comp in self.prior.components]
-        p_np2 = [comp.posterior.grad_log_partition[dim_latent:2 * dim_latent]
-                 for comp in self.prior.components]
-
-        # Get the output of the Gaussian encoder.
-        np1, np2 = _svae_get_nparams(enc_params, data)
-        nparams = np.hstack([np1, np2])
-
-        # Initialization of the assignments.
-        resps = self.prior.init_resps(len(data))
-
-        # Padding value for the sufficient statistics.
-        padding = np.ones((len(resps), dim_latent * 2))
-
-        for i in range(n_iter):
-            # Estimate the optimal parameters of q(X) given
-            # the responsibilities.
-            exp_np1 = resps.dot(p_np1)
-            exp_np2 = resps.dot(p_np2)
-            q_np1 = np1 + exp_np1
-            q_np2 = np2 + exp_np2
-
-            # Get the expected value sufficient stats: E_q(x)[phi(x)].
-            exp_x1 = (q_np2 ** 2) / (4 * (q_np1 ** 2)) - 1. / (2 * q_np1)
-            exp_x2 = -q_np2 / (2 * q_np1)
-
-            # Re-estimate the responsibilities.
-            s_stats = np.c_[exp_x1, exp_x2, padding]
-            _, resps, model_data = self.prior.get_resps(s_stats)
-
+    @staticmethod
+    def _exp_stats(p_np1, p_np2, np1, np2, resps, padding):
         # Estimate the optimal parameters of q(X) given
         # the responsibilities.
         exp_np1 = resps.dot(p_np1)
@@ -455,42 +190,144 @@ class SVAE(PersistentModel):
         # Get the expected value sufficient stats: E_q(x)[phi(x)].
         exp_x1 = (q_np2 ** 2) / (4 * (q_np1 ** 2)) - 1. / (2 * q_np1)
         exp_x2 = -q_np2 / (2 * q_np1)
+
+        # Re-estimate the responsibilities.
         s_stats = np.c_[exp_x1, exp_x2, padding]
+
+        return exp_np1, exp_np2, s_stats
+
+    def __init__(self, args):
+        VAE.__init__(self, args)
+
+        self._build()
+
+    def _estimate_prior_np(self, prior, data):
+        idx = len(self.params) // 2
+        enc_params, dec_params = self.params[:idx], self.params[idx:]
+        mean, var = GaussianResidualMLP.forward(enc_params, np.tanh,
+                                                data)
+        np1, np2 = GaussianResidualMLP.natural_params(mean, var)
+        resps, exp_np1, exp_np2, s_stats, model_data = \
+            self.optimize_local_factors(prior, np1, np2)
+        q_np1 = np1 + exp_np1
+        q_np2 = np2 + exp_np2
+
+        return exp_np1, exp_np2, q_np1, q_np2, s_stats, resps, model_data
+
+    def sample_latent(self, prior, data):
+        #idx = len(self.params) // 2
+        #enc_params = self.params[:idx]
+        #exp_np1, exp_np2, _, _, _, _, _ = self._estimate_prior_np(prior, data)
+        #samples, _ = GaussianResidualMLP.sample_np(enc_params, np.tanh, data,
+        #                                           exp_np1, exp_np2)
+        #return samples
+        idx = len(self.params) // 2
+        enc_params = self.params[:idx]
+        return GaussianResidualMLP.sample(enc_params, np.tanh, data)
+
+    def sample(self, prior, data):
+        #idx = len(self.params) // 2
+        #dec_params = self.params[idx:]
+        #latent = self.sample_latent(prior, data)
+        #return GaussianResidualMLP.sample(dec_params, np.tanh, latent)
+        idx = len(self.params) // 2
+        dec_params = self.params[idx:]
+        latent = self.sample_latent(prior, data)
+        return GaussianResidualMLP.sample(dec_params, np.tanh, latent)
+
+    def sample2(self, data):
+        idx = len(self.params) // 2
+        dec_params = self.params[idx:]
+        latent = self.sample_latent(data)
+        return GaussianResidualMLP.sample(dec_params, np.tanh, latent)
+
+    def get_gradients2(self, prior, data, num_points, num_batches, resps=None):
+        params = self.params
+        idx = len(params) // 2
+        enc_params, dec_params = params[:idx], params[idx:]
+        mean, var = GaussianResidualMLP.forward(enc_params, np.tanh, data)
+
+        # Clustering.
+        s_stats = prior.get_sufficient_stats(mean)
+        if resps is None:
+            log_norm, resps, model_data = prior.get_resps(getval(s_stats))
+        else:
+            log_norm, _, model_data = prior.get_resps(getval(s_stats))
+
+
+        # Expected value of the prior's components parameters.
+        dim_latent = self.dim_latent
+        p_np1 = [comp.posterior.grad_log_partition[:dim_latent]
+                 for comp in prior.components]
+        p_np2 = [comp.posterior.grad_log_partition[dim_latent:2 * dim_latent]
+                 for comp in prior.components]
+        q_np1 = resps.dot(p_np1)
+        q_np2 = resps.dot(p_np2)
+
+        val, grads = _pvae_elbo_gradients(params, np.tanh, prior, q_np1, q_np2, num_points,
+                                          num_batches, data)
+        return val, grads, prior.accumulate_stats(s_stats, resps, model_data)
+
+    def get_gradients(self, prior, data, num_points, num_batches):
+        exp_np1, exp_np2, q_np1, q_np2, s_stats, resps, model_data = \
+            self._estimate_prior_np(prior, data)
+        params = self.params
+        val, grads = _svae_elbo_gradients(params, np.tanh, prior, exp_np1,
+                                          exp_np2, num_points, num_batches, data)
+        #corr_grad = np.c_[grads[-2], grads[-1]]
+
+        #padding = s_stats.shape[1] - corr_grad.shape[1]
+        #s_stats += np.c_[corr_grad, np.zeros((len(data), padding))]
+        acc_stats = prior.accumulate_stats(s_stats, resps, model_data)
+
+        return val, grads, acc_stats
+
+    def optimize_local_factors(self, prior, np1, np2, n_iter=100):
+        dim_latent = self.dim_latent
+
+        # Expected value of the prior's components parameters.
+        p_np1 = [comp.posterior.grad_log_partition[:dim_latent]
+                 for comp in prior.components]
+        p_np2 = [comp.posterior.grad_log_partition[dim_latent:2 * dim_latent]
+                 for comp in prior.components]
+
+        # Initialization of the assignments.
+        resps = prior.init_resps(len(np1))
+
+        # Padding value for the sufficient statistics.
+        padding = np.ones((len(resps), dim_latent * 2))
+
+        tol = 1e-3
+        old_stats = None
+        for i in range(n_iter):
+            exp_np1, exp_np2, s_stats = \
+                SVAE._exp_stats(p_np1, p_np2, np1, np2, resps, padding)
+            _, resps, model_data = prior.get_resps(s_stats)
+            #_, _, model_data = prior.get_resps(s_stats)
+
+            if old_stats is None:
+                old_stats = s_stats
+            else:
+                if np.linalg.norm(old_stats - s_stats) <= tol:
+                    break
+                old_stats = s_stats
+
+        if i == n_iter - 1:
+            print('WARNING: reached maximum number of iterations.')
+
+        exp_np1, exp_np2, s_stats = \
+            SVAE._exp_stats(p_np1, p_np2, np1, np2, resps, padding)
 
         return resps, exp_np1, exp_np2, s_stats, model_data
 
     # PersistentModel interface implementation.
     # -----------------------------------------------------------------
 
-    def to_dict(self):
-        return {
-            'dim_fea': self.dim_fea,
-            'dim_latent': self.dim_latent,
-            'n_layers': self.n_layers,
-            'n_units': self.n_units,
-            'non_informative_prior': self.non_informative_prior,
-            'params': [param for param in self.params]
-        }
-
-    @staticmethod
-    def load_from_dict(model_data):
-        model = SVAE.__new__(SVAE)
-
-        model.dim_fea = model_data['dim_fea']
-        model.dim_latent = model_data['dim_latent']
-        model.n_layers = model_data['n_layers']
-        model.n_units = model_data['n_units']
-        model.non_informative_prior = model_data['non_informative_prior']
-
-        model._build()
-        model.params = model_data['params']
-
-        return model
-
     @staticmethod
     def load(file_obj):
         model_data = pickle.load(file_obj)
-        return SVAE.load_from_dict(model_data)
+        model_data['model_class'] = SVAE
+        return VAE.load_from_dict(model_data)
 
     # -----------------------------------------------------------------
 

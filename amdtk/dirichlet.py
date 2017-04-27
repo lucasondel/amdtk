@@ -25,54 +25,50 @@ DEALINGS IN THE SOFTWARE.
 
 """
 
-import autograd.numpy as np
-from autograd.scipy.special import gammaln
-from autograd import grad
+import theano
+import theano.tensor as T
+import numpy as np
 from .efd import EFDPrior
 
 
-def _log_partition_func(np1):
-    return np.sum(gammaln(np1 + 1.)) - gammaln(np.sum(np1 + 1))
+def _log_partition_symfunc():
+    natural_params = T.matrix()
+    log_Z = T.sum(T.gammaln(natural_params + 1.), axis=1) -\
+        T.gammaln(T.sum(natural_params + 1, axis=1))
+
+    func = theano.function([natural_params], log_Z)
+    grad_func = theano.function([natural_params],
+                                T.grad(T.sum(log_Z), natural_params))
+    return func, grad_func
 
 
-_grad_log_partition_func = grad(_log_partition_func)
+
+_log_partition_func, _grad_log_partition_func = _log_partition_symfunc()
 
 
 class Dirichlet(EFDPrior):
     """Dirichlet Distribution."""
 
     def __init__(self, prior_counts):
-        """Initialize a Dirichlet Distribution.
-
-        Parameters
-        ----------
-        prior_counts : array_like
-            Prior counts for each category (i.e. dimension of the
-            random variable).
-
-        """
-        # Natural parameters.
-        self._np1 = np.asarray(prior_counts - 1, dtype=float)
-        self._natural_params = self._np1
-
-        # Compile the model.
+        self._natural_params = np.asarray(prior_counts - 1, dtype=float)
         self._build()
 
     def _build(self):
-        self._natural_params = self._np1
-        self._log_partition = _log_partition_func(self._np1)
-        self._grad_log_partition = _grad_log_partition_func(self._np1)
+        natp_mat = self._natural_params[np.newaxis, :]
+        self._log_partition = _log_partition_func(natp_mat)[0]
+        self._grad_log_partition = \
+            _grad_log_partition_func(natp_mat)[0]
 
     # PersistentModel interface implementation.
     # -----------------------------------------------------------------
 
     def to_dict(self):
-        return {'np1': self._np1}
+        return {'natural_params': self._natural_params}
 
     @staticmethod
     def load_from_dict(model_data):
         model = Dirichlet.__new__(Dirichlet)
-        model._np1 = model_data['np1']
+        model._natural_params = model_data['natural_params']
         model._build()
         return model
 
@@ -86,9 +82,10 @@ class Dirichlet(EFDPrior):
     @natural_params.setter
     def natural_params(self, value):
         self._natural_params = value
-        self._np1 = value
-        self._log_partition = _log_partition_func(self._np1)
-        self._grad_log_partition = _grad_log_partition_func(self._np1)
+        natp_mat = self._natural_params[np.newaxis, :]
+        self._log_partition = _log_partition_func(natp_mat)[0]
+        self._grad_log_partition = \
+            _grad_log_partition_func(natp_mat)[0]
 
     @property
     def log_partition(self):
@@ -97,6 +94,9 @@ class Dirichlet(EFDPrior):
     @property
     def grad_log_partition(self):
         return self._grad_log_partition
+
+    def evaluate_log_partition(self, natural_params):
+        return _log_partition_func(natural_params)
 
     # ------------------------------------------------------------------
 

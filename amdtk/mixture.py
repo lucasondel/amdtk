@@ -42,93 +42,21 @@ class Mixture(LatentEFD, SVAEPrior):
         LatentEFD.__init__(self, prior, posterior, components)
         self.vb_post_update()
 
-    def _get_param_matrix(self):
-        return np.vstack([comp.posterior.grad_log_partition
-                          for idx, comp in enumerate(self.components)])
-
     # SVAEPrior interface.
     # ------------------------------------------------------------------
 
-    def init_resps(self, n_frames):
-        """Get the initialize per-frame responsibilities.
-
-        Parameters
-        ----------
-        n_frames : numpy.ndarray,
-            Number of frames for the mini-batch.
-
-        Returns
-        -------
-        resps : numpy.ndarray
-            Initial per-frame responsibilities.
-
-        """
-        prob = np.exp(self.posterior.grad_log_partition)
-        prob /= prob.sum()
-        return np.ones((n_frames, len(self.components))) * prob
-
-    def get_resps(self, s_stats, output_llh=False):
-        """Get the components' responisbilities.
-
-        Parameters
-        ----------
-        s_stats : numpy.ndarray,
-            Sufficient statistics.
-        output_llh : boolean
-            If True, returns the per component log-likelihood.
-
-        Returns
-        -------
-        log_norm : numpy.ndarray
-            Per-frame log normalization constant.
-        resps : numpy.ndarray
-            Responsibilities.
-        exp_llh : boolean
-            If output_llh is True, per component log-likelihood.
-
-        """
-        # Expected value of the log-likelihood w.r.t. the posteriors.
-        exp_llh = self.comp_params.dot(s_stats.T) + \
-            self.posterior.grad_log_partition[:, np.newaxis]
-
-        # Softmax.
+    def get_resps(self, s_stats):
+        exp_llh = self.components_exp_llh(s_stats)
+        exp_llh += self.posterior.grad_log_partition[:, np.newaxis]
         log_norm = logsumexp(exp_llh, axis=0)
         resps = np.exp((exp_llh - log_norm))
-
         return log_norm, resps.T, exp_llh
 
     def accumulate_stats(self, s_stats, resps, model_data):
-        """Accumulate the sufficient statistics.
-
-        Parameters
-        ----------
-        s_stats : numpy.ndarray
-            Sufficient statistics.
-        resps : numpy.ndarray
-            Per-frame responsibilities.
-        model_data : object
-            Model speficic data for the training.
-
-        Returns
-        -------
-        acc_stats : :class:`EFDStats`
-            Accumulated sufficient statistics.
-
-        """
         acc_stats1 = resps.sum(axis=0)
         acc_stats2 = resps.T.dot(s_stats)
         return EFDStats([acc_stats1, acc_stats2])
 
-    # LatentEFD interface implementation.
-    # ------------------------------------------------------------------
-
-    def vb_e_step(self, data):
-        s_stats = self.get_sufficient_stats(data)
-        log_norm, resps, model_data = self.get_resps(s_stats)
-        return log_norm, self.accumulate_stats(s_stats, resps, model_data)
-
-    def vb_post_update(self):
-        self.comp_params = self._get_param_matrix()
 
     # PersistentModel interface implementation.
     # -----------------------------------------------------------------
