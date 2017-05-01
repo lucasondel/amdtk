@@ -35,7 +35,12 @@ class MLP(metaclass=abc.ABCMeta):
     @staticmethod
     def init_layer_params(dim_in, dim_out, scale):
         """Initialize a weights matrix and bias vector."""
-        weights = np.random.randn(dim_in, dim_out)
+        #weights = np.random.randn(dim_in, dim_out)
+        weights = np.random.uniform(
+            low=-np.sqrt(6. / (dim_in + dim_out)),
+            high=np.sqrt(6. / (dim_in + dim_out)),
+            size=(dim_in, dim_out)
+        )
         bias = np.zeros(dim_out)
         return [scale * weights, bias]
 
@@ -54,12 +59,13 @@ class GaussianMLP(MLP):
     """Static implementation of a Gaussian residual MLP."""
 
     @staticmethod
-    def create(dim_in, dim_out, dim_h, n_layers, scale):
+    def create(dim_in, dim_out, dim_h, n_layers, scale, precision):
         """Create a Gaussian residual MLP."""
         params = MLP.init_layer_params(dim_in, dim_h, scale)
         for idx in range(n_layers - 1):
             params += MLP.init_layer_params(dim_h, dim_h, scale)
         params += MLP.init_layer_params(dim_h, 2 * dim_out, scale)
+        params[-1][dim_out:] += precision
         return params
 
     @staticmethod
@@ -96,14 +102,17 @@ class GaussianResidualMLP(GaussianMLP):
     @staticmethod
     def init_residual_params(dim_in, dim_out):
         """Partial isometry initialization."""
+        if dim_out == dim_in:
+            return [np.identity(dim_in)]
         d = max(dim_in, dim_out)
         weights = np.linalg.qr(np.random.randn(d,d))[0][:dim_in,:dim_out]
         return [weights]
 
     @staticmethod
-    def create(dim_in, dim_out, dim_h, n_layers, scale):
+    def create(dim_in, dim_out, dim_h, n_layers, scale, precision):
         """Create a Gaussian residual MLP."""
-        params = GaussianMLP.create(dim_in, dim_out, dim_h, n_layers, scale)
+        params = GaussianMLP.create(dim_in, dim_out, dim_h, n_layers, scale,
+                                    precision)
         params += GaussianResidualMLP.init_residual_params(dim_in, dim_out)
         return params
 

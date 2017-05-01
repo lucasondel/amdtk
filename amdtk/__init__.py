@@ -26,7 +26,6 @@ from .efd import EFDLikelihood
 
 from .inference import Optimizer
 from .inference import StochasticVBOptimizer
-from .inference import AdamSGAOptimizer
 from .inference import SVAEAdamSGAOptimizer
 
 from .mixture import Mixture

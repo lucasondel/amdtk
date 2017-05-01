@@ -350,16 +350,22 @@ class LatentEFD(SVAEPrior, metaclass=abc.ABCMeta):
         s_stats = cls.get_sufficient_stats(data)
         return s_stats
 
-    def components_exp_llh(self, s_stats):
+    def components_exp_llh(self, s_stats, log_resps=None):
         """Per components expected log-likelihood.
 
         Parameters
         ----------
         s_stats : numpy.ndarray
             (NxD) matrix of sufficient statistics.
+        log_resps : numpy.ndarray
+            Matrix of log responsibilities to enforce which components
+            can be active.
 
         """
-        return self.components_params_matrix.dot(s_stats.T)
+        retval = self.components_params_matrix.dot(s_stats.T)
+        if log_resps is not None:
+            retval += log_resps.T
+        return retval
 
     def kl_div_posterior_prior(self):
         """Kullback-Leibler divergence between prior /posterior.
@@ -376,7 +382,7 @@ class LatentEFD(SVAEPrior, metaclass=abc.ABCMeta):
             retval += comp.posterior.kl_div(comp.prior)
         return retval
 
-    def vb_e_step(self, data):
+    def vb_e_step(self, data, log_resps=None):
         """E-step of the standard Variational Bayes algorithm.
 
         Parameters
@@ -384,6 +390,8 @@ class LatentEFD(SVAEPrior, metaclass=abc.ABCMeta):
         data : numpy.ndarray
             (NxD) matrix where N is the number of frames and D is the
             dimension of a single features vector.
+        log_resps : numpy.ndarray
+            Alignments.
 
         Returns
         -------
@@ -395,7 +403,7 @@ class LatentEFD(SVAEPrior, metaclass=abc.ABCMeta):
 
         """
         s_stats = self.get_sufficient_stats(data)
-        log_norm, resps, model_data = self.get_resps(s_stats)
+        log_norm, resps, model_data = self.get_resps(s_stats, log_resps)
         return log_norm, self.accumulate_stats(s_stats, resps, model_data)
 
 

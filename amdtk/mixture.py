@@ -45,8 +45,8 @@ class Mixture(LatentEFD, SVAEPrior):
     # SVAEPrior interface.
     # ------------------------------------------------------------------
 
-    def get_resps(self, s_stats):
-        exp_llh = self.components_exp_llh(s_stats)
+    def get_resps(self, s_stats, log_resps=None):
+        exp_llh = self.components_exp_llh(s_stats, log_resps)
         exp_llh += self.posterior.grad_log_partition[:, np.newaxis]
         log_norm = logsumexp(exp_llh, axis=0)
         resps = np.exp((exp_llh - log_norm))

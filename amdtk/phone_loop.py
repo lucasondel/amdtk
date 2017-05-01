@@ -28,6 +28,8 @@ import numpy as np
 from scipy.special import logsumexp
 from .efd import EFDStats, LatentEFD
 from .svae_prior import SVAEPrior
+from bisect import bisect
+from itertools import groupby
 
 
 class PhoneLoop(LatentEFD, SVAEPrior):
@@ -54,84 +56,53 @@ class PhoneLoop(LatentEFD, SVAEPrior):
                 trans_mat[final_states[idx], final_states[idx]] = \
                     np.log(prob_final_state)
 
-        for final_state in final_states:
+        for idx, final_state in enumerate(final_states):
             if n_states > 1:
+                # Disallow repeating a unit.
+                m_weights = mixture_weights.copy()
+                m_weights[idx] = 0.
+                m_weights /= m_weights.sum()
+
                 trans_mat[final_state, init_states] = \
-                    np.log((1 - prob_final_state) * mixture_weights)
+                    np.log((1 - prob_final_state) * m_weights)
             else:
                 trans_mat[final_state, init_states] = np.log(mixture_weights)
 
         return trans_mat, init_states, final_states
 
     def __init__(self, prior, posterior, components):
-        """Initialize the Phone Loop.
-
-        Parameters
-        ----------
-        prior : :class:`Dirichlet`
-            Dirichlet prior of the mixture.
-        posterior : :class:`Dirichlet`
-            Dirichlet posterior of the mixture.
-        compents : list
-            List of :class:`Normal`
-
-        """
         LatentEFD.__init__(self, prior, posterior, components)
-
-        # Matrix of the components' parameters.
-        n_comp = len(components)
-        n_params = len(components[0].prior.natural_params)
-        self.comp_params = np.zeros((n_comp, n_params))
 
         self.n_units = len(prior.natural_params)
         self.n_states = int(len(components) / self.n_units)
-
-        # Expected value of the units' weights.
-        weights = self.posterior.grad_log_partition
-
+        weights = np.exp(self.posterior.grad_log_partition)
+        weights /= weights.sum()
         self.log_trans_mat, self.init_states, self.final_states = \
             PhoneLoop.__log_transition_matrix(self.n_units, self.n_states,
                                               weights)
 
-        self._build()
+        self.vb_post_update()
 
-    def _build(self):
-        # Update the expected value of the parameters of the Gaussian
-        # components.
-        values = np.vstack(
-            [comp.posterior.grad_log_partition for idx, comp in
-             enumerate(self.components)]
-        )
-        self.comp_params = values
+    def vb_post_update(self):
+        LatentEFD.vb_post_update(self)
 
         # Update the log transition matrix.
-        exp_log_weights = self.posterior.grad_log_partition
+        weights = np.exp(self.posterior.grad_log_partition)
+        weights /= weights.sum()
         prob_fs = np.exp(self.log_trans_mat[self.final_states[0],
                                             self.final_states[0]])
-        for final_state in self.final_states:
+        for idx, final_state in enumerate(self.final_states):
             if self.n_states > 1:
+                m_weights = weights.copy()
+                m_weights[idx] = 0.
+                m_weights /= m_weights.sum()
                 self.log_trans_mat[final_state, self.init_states] = \
-                    (np.log((1 - prob_fs)) + exp_log_weights)
+                    np.log((1 - prob_fs) * m_weights)
             else:
                 self.log_trans_mat[final_state, self.init_states] = \
-                    exp_log_weights
+                    weights
 
     def forward(self, llhs):
-        """Forward recursion.
-
-        Parameters
-        ----------
-        llhs : numpy.ndarray
-            Log of the emission probabilites with shape (N x K) where N
-            is the number of frame in the sequence and K is the number
-            of state in the HMM model.
-
-        Returns
-        -------
-        log_alphas : numpy.ndarray
-            The log alphas values of the recursions.
-
-        """
         log_init = self.posterior.grad_log_partition
         log_init -= logsumexp(log_init)
         log_alphas = np.zeros_like(llhs) - np.inf
@@ -143,21 +114,6 @@ class PhoneLoop(LatentEFD, SVAEPrior):
         return log_alphas
 
     def backward(self, llhs):
-        """Backward recursion.
-
-        Parameters
-        ----------
-        llhs : numpy.ndarray
-            Log of the emission probabilites with shape (N x K) where N
-            is the number of frame in the sequence and K is the number
-            of state in the HMM model.
-
-        Returns
-        -------
-        log_alphas : numpy.ndarray
-            The log alphas values of the recursions.
-
-        """
         log_A = self.log_trans_mat
         log_betas = np.zeros_like(llhs) - np.inf
         log_betas[-1, self.final_states] = 0.
@@ -167,21 +123,6 @@ class PhoneLoop(LatentEFD, SVAEPrior):
         return log_betas
 
     def units_stats(self, c_llhs, log_alphas, log_betas):
-        """Extract the statistics needed to re-estimate the
-        weights of the units.
-        Parameters
-        ----------
-        c_llhs : numpy.ndarray
-            Emissions log-likelihood.
-        log_alphas : numpy.ndarray
-            Log of the results of the forward recursion.
-        log_betas : numpy.ndarray
-            Log of the results of the backward recursion.
-        Returns
-        -------
-        units_stats : numpy.ndarray
-            Units' statistics.
-        """
         log_units_stats = np.zeros(self.n_units)
         norm = logsumexp(log_alphas[-1] + log_betas[-1])
 
@@ -196,81 +137,60 @@ class PhoneLoop(LatentEFD, SVAEPrior):
 
         return np.exp(log_units_stats)
 
+
+    def viterbi(self, llhs):
+        backtrack = np.zeros_like(llhs, dtype=int)
+        omega = np.zeros(llhs.shape[1]) + float('-inf')
+        omega[self.init_states] = llhs[0, self.init_states] + \
+            self.posterior.grad_log_partition
+
+        for i in range(1, llhs.shape[0]):
+            hypothesis = omega + self.log_trans_mat.T
+            backtrack[i] = np.argmax(hypothesis, axis=1)
+            omega = llhs[i] + hypothesis[range(len(self.log_trans_mat)),
+                                         backtrack[i]]
+
+        path = [self.final_states[np.argmax(omega[self.final_states])]]
+        for i in reversed(range(1, len(llhs))):
+            path.insert(0, backtrack[i, path[0]])
+
+        return path
+
+    def decode(self, data, state_path=False):
+        s_stats = self.get_sufficient_stats(data)
+        exp_llh = self.components_exp_llh(s_stats)
+        path = self.viterbi(exp_llh.T)
+        if not state_path:
+            path = [bisect(self.init_states, state) for state in path]
+            path = [x[0] for x in groupby(path)]
+
+        return path
+
+
     # SVAEPrior interface.
     # ------------------------------------------------------------------
 
-    def init_resps(self, n_frames):
-        """Get the initialize per-frame responsibilities.
+    def get_resps(self, s_stats, log_resps=None):
+        if log_resps is not None:
+            extended_lresps = np.repeat(log_resps, self.n_states, axis=1)
+            log_alphas = self.forward(extended_lresps)
+            log_betas = self.backward(extended_lresps)
+            log_q_Z = (log_alphas + log_betas).T
+            log_norm = logsumexp(log_q_Z, axis=0)
+            extended_lresps = (log_q_Z - log_norm).T
+        else:
+            extentd_lresps = None
 
-        Parameters
-        ----------
-        n_frames : numpy.ndarray,
-            Number of frames for the mini-batch.
-
-        Returns
-        -------
-        resps : numpy.ndarray
-            Initial per-frame responsibilities.
-
-        """
-        n_units = self.n_units
-        n_states = self.n_states
-        prob = np.exp(self.posterior.grad_log_partition)
-        prob /= prob.sum()
-        tmp = np.ones((n_units, n_states)) * (1 / n_states)
-        prob = (tmp * prob[:, np.newaxis]).reshape(n_units * n_states)
-        return np.ones((n_frames, n_units * n_states)) * prob
-
-    def get_resps(self, s_stats, output_llh=False):
-        """Get the components' responisbilities.
-
-        Parameters
-        ----------
-        s_stats : numpy.ndarray,
-            Sufficient statistics.
-        output_llh : boolean
-            If True, returns the per component log-likelihood.
-
-        Returns
-        -------
-        log_norm : numpy.ndarray
-            Per-frame log normalization constant.
-        resps : numpy.ndarray
-            Responsibilities.
-        exp_llh : boolean
-            If output_llh is True, per component log-likelihood.
-
-        """
-        # Expected value of the log-likelihood w.r.t. the posteriors.
-        exp_llh = self.comp_params.dot(s_stats.T).T
-
-        # Forward-Backward.
-        log_alphas = self.forward(exp_llh)
-        log_betas = self.backward(exp_llh)
+        exp_llh = self.components_exp_llh(s_stats, extended_lresps)
+        log_alphas = self.forward(exp_llh.T)
+        log_betas = self.backward(exp_llh.T)
         log_q_Z = (log_alphas + log_betas).T
         log_norm = logsumexp(log_q_Z, axis=0)
         resps = np.exp((log_q_Z - log_norm))
 
-        return log_norm[-1], resps.T, (exp_llh, log_alphas, log_betas)
+        return log_norm[-1], resps.T, (exp_llh.T, log_alphas, log_betas)
 
     def accumulate_stats(self, s_stats, resps, model_data):
-        """Accumulate the sufficient statistics.
-
-        Parameters
-        ----------
-        s_stats : numpy.ndarray
-            Sufficient statistics.
-        resps : numpy.ndarray
-            Per-frame responsibilities.
-        model_data : object
-            Model speficic data for the training.
-
-        Returns
-        -------
-        acc_stats : :class:`EFDStats`
-            Accumulated sufficient statistics.
-
-        """
         if self.n_states > 1 :
             acc_stats1 = self.units_stats(*model_data)
         else:
@@ -278,11 +198,6 @@ class PhoneLoop(LatentEFD, SVAEPrior):
         acc_stats2 = resps.T.dot(s_stats)
         return EFDStats([acc_stats1, acc_stats2])
 
-    # LatentEFD interface implementation.
-    # -----------------------------------------------------------------
-
-    def vb_post_update(self):
-        self._build()
 
     # PersistentModel interface implementation.
     # -----------------------------------------------------------------
@@ -329,8 +244,9 @@ class PhoneLoop(LatentEFD, SVAEPrior):
         model.init_states = model_data['init_states']
         model.final_states = model_data['final_states']
 
-        model._build()
+        model.vb_post_update()
 
         return model
 
     # -----------------------------------------------------------------
+
