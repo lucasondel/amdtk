@@ -67,7 +67,8 @@ class Optimizer(metaclass=abc.ABCMeta):
 
         self.dview.push({
             'phone_list': phone_list,
-            '_create_ali_log_resps': _create_ali_log_resps
+            '_create_ali_log_resps': _create_ali_log_resps,
+            'data_stats': data_stats
         })
 
     def run(self, data, callback):
@@ -211,6 +212,8 @@ class SVAEAdamSGAOptimizer(Optimizer):
                 log_resps = None
 
             data = read_htk(fea_file)
+            data -= data_stats['mean']
+            data *= numpy.sqrt(data_stats['precision'])
 
             if log_resps is not None:
                 min_len = min(len(data), len(log_resps))

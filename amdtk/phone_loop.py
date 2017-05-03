@@ -25,11 +25,13 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
 import numpy as np
+from bisect import bisect
+from itertools import groupby
 from scipy.special import logsumexp
 from .efd import EFDStats, LatentEFD
 from .svae_prior import SVAEPrior
-from bisect import bisect
-from itertools import groupby
+from .hmm_util import create_phone_loop_transition_matrix
+from .hmm_util import forward_backward
 
 
 class PhoneLoop(LatentEFD, SVAEPrior):
@@ -39,47 +41,17 @@ class PhoneLoop(LatentEFD, SVAEPrior):
 
     """
 
-    @staticmethod
-    def __log_transition_matrix(n_units, n_states, mixture_weights,
-                                prob_final_state=.5):
-        """Create a log transition matrix."""
-        tot_n_states = n_units * n_states
-        init_states = np.arange(0, tot_n_states, n_states)
-        final_states = init_states + n_states - 1
-        trans_mat = np.zeros((tot_n_states, tot_n_states)) + float('-inf')
-
-        for idx, init_state in enumerate(init_states):
-            for offset in range(n_states - 1):
-                state = init_state + offset
-                trans_mat[state, state: state + n_states - 1] = np.log(.5)
-            if n_states > 1:
-                trans_mat[final_states[idx], final_states[idx]] = \
-                    np.log(prob_final_state)
-
-        for idx, final_state in enumerate(final_states):
-            if n_states > 1:
-                # Disallow repeating a unit.
-                m_weights = mixture_weights.copy()
-                m_weights[idx] = 0.
-                m_weights /= m_weights.sum()
-
-                trans_mat[final_state, init_states] = \
-                    np.log((1 - prob_final_state) * m_weights)
-            else:
-                trans_mat[final_state, init_states] = np.log(mixture_weights)
-
-        return trans_mat, init_states, final_states
-
-    def __init__(self, prior, posterior, components):
-        LatentEFD.__init__(self, prior, posterior, components)
+    def __init__(self, prior, posterior, gauss_components, n_states):
+        LatentEFD.__init__(self, prior, posterior, gauss_components)
 
         self.n_units = len(prior.natural_params)
-        self.n_states = int(len(components) / self.n_units)
-        weights = np.exp(self.posterior.grad_log_partition)
-        weights /= weights.sum()
-        self.log_trans_mat, self.init_states, self.final_states = \
-            PhoneLoop.__log_transition_matrix(self.n_units, self.n_states,
-                                              weights)
+        self.n_states = n_states
+
+        # Will be initialized later.
+        self.init_prob = None
+        self.trans_mat = None
+        self.init_states = None
+        self.final_states = None
 
         self.vb_post_update()
 
@@ -87,49 +59,22 @@ class PhoneLoop(LatentEFD, SVAEPrior):
         LatentEFD.vb_post_update(self)
 
         # Update the log transition matrix.
-        weights = np.exp(self.posterior.grad_log_partition)
-        weights /= weights.sum()
-        prob_fs = np.exp(self.log_trans_mat[self.final_states[0],
-                                            self.final_states[0]])
-        for idx, final_state in enumerate(self.final_states):
-            if self.n_states > 1:
-                m_weights = weights.copy()
-                m_weights[idx] = 0.
-                m_weights /= m_weights.sum()
-                self.log_trans_mat[final_state, self.init_states] = \
-                    np.log((1 - prob_fs) * m_weights)
-            else:
-                self.log_trans_mat[final_state, self.init_states] = \
-                    weights
-
-    def forward(self, llhs):
-        log_init = self.posterior.grad_log_partition
-        log_init -= logsumexp(log_init)
-        log_alphas = np.zeros_like(llhs) - np.inf
-        log_alphas[0, self.init_states] = llhs[0, self.init_states] + log_init
-        log_A = self.log_trans_mat
-        for i in range(1, llhs.shape[0]):
-            log_alphas[i] = llhs[i]
-            log_alphas[i] += logsumexp(log_alphas[i-1] + log_A.T, axis=1)
-        return log_alphas
-
-    def backward(self, llhs):
-        log_A = self.log_trans_mat
-        log_betas = np.zeros_like(llhs) - np.inf
-        log_betas[-1, self.final_states] = 0.
-        for i in reversed(range(llhs.shape[0]-1)):
-            log_betas[i] = logsumexp(log_A + llhs[i+1] + log_betas[i+1],
-                                     axis=1)
-        return log_betas
+        unigram_lm = np.exp(self.posterior.grad_log_partition)
+        unigram_lm /= unigram_lm.sum()
+        self.init_prob = unigram_lm
+        self.trans_mat, self.init_states, self.final_states = \
+            create_phone_loop_transition_matrix(self.n_units, self.n_states,
+                                                unigram_lm)
 
     def units_stats(self, c_llhs, log_alphas, log_betas):
         log_units_stats = np.zeros(self.n_units)
         norm = logsumexp(log_alphas[-1] + log_betas[-1])
+        log_A = np.log(self.trans_mat.toarray())
 
         for n_unit in range(self.n_units):
             index1 = n_unit * self.n_states + 1
             index2 = index1 + 1
-            log_prob_trans = self.log_trans_mat[index1, index2]
+            log_prob_trans = log_A[index1, index2]
             log_q_zn1_zn2 = log_alphas[:-1, index1] + c_llhs[1:, index2] + \
                 log_prob_trans + log_betas[1:, index2]
             log_q_zn1_zn2 -= norm
@@ -143,11 +88,12 @@ class PhoneLoop(LatentEFD, SVAEPrior):
         omega = np.zeros(llhs.shape[1]) + float('-inf')
         omega[self.init_states] = llhs[0, self.init_states] + \
             self.posterior.grad_log_partition
+        log_A = np.log(self.trans_mat.toarray())
 
         for i in range(1, llhs.shape[0]):
-            hypothesis = omega + self.log_trans_mat.T
+            hypothesis = omega + log_A.T
             backtrack[i] = np.argmax(hypothesis, axis=1)
-            omega = llhs[i] + hypothesis[range(len(self.log_trans_mat)),
+            omega = llhs[i] + hypothesis[range(len(log_A)),
                                          backtrack[i]]
 
         path = [self.final_states[np.argmax(omega[self.final_states])]]
@@ -156,9 +102,13 @@ class PhoneLoop(LatentEFD, SVAEPrior):
 
         return path
 
-    def decode(self, data, state_path=False):
+    def decode(self, data, log_resps=None, state_path=False):
+        if log_resps is not None:
+            extended_lresps = np.repeat(log_resps, self.n_states, axis=1)
+        else:
+            extended_lresps = None
         s_stats = self.get_sufficient_stats(data)
-        exp_llh = self.components_exp_llh(s_stats)
+        exp_llh = self.components_exp_llh(s_stats, extended_lresps)
         path = self.viterbi(exp_llh.T)
         if not state_path:
             path = [bisect(self.init_states, state) for state in path]
@@ -173,17 +123,27 @@ class PhoneLoop(LatentEFD, SVAEPrior):
     def get_resps(self, s_stats, log_resps=None):
         if log_resps is not None:
             extended_lresps = np.repeat(log_resps, self.n_states, axis=1)
-            log_alphas = self.forward(extended_lresps)
-            log_betas = self.backward(extended_lresps)
+            log_alphas, log_betas = forward_backward(
+                self.init_prob,
+                self.trans_mat,
+                self.init_states,
+                self.final_states,
+                extended_lresps.T
+            )
             log_q_Z = (log_alphas + log_betas).T
             log_norm = logsumexp(log_q_Z, axis=0)
             extended_lresps = (log_q_Z - log_norm).T
         else:
-            extentd_lresps = None
+            extended_lresps = None
 
         exp_llh = self.components_exp_llh(s_stats, extended_lresps)
-        log_alphas = self.forward(exp_llh.T)
-        log_betas = self.backward(exp_llh.T)
+        log_alphas, log_betas = forward_backward(
+            self.init_prob,
+            self.trans_mat,
+            self.init_states,
+            self.final_states,
+            exp_llh
+        )
         log_q_Z = (log_alphas + log_betas).T
         log_norm = logsumexp(log_q_Z, axis=0)
         resps = np.exp((log_q_Z - log_norm))
@@ -197,6 +157,16 @@ class PhoneLoop(LatentEFD, SVAEPrior):
             acc_stats1 = resps.sum(axis=0)
         acc_stats2 = resps.T.dot(s_stats)
         return EFDStats([acc_stats1, acc_stats2])
+
+    def vb_m_step(self, acc_stats):
+        self.posterior.natural_params = self.prior.natural_params + \
+            acc_stats[0]
+
+        for idx, stats in enumerate(acc_stats[1]):
+            self.components[idx].posterior.natural_params = \
+                self.components[idx].prior.natural_params + stats
+
+        self.vb_post_update()
 
 
     # PersistentModel interface implementation.
@@ -212,7 +182,7 @@ class PhoneLoop(LatentEFD, SVAEPrior):
             'components_data': [comp.to_dict() for comp in self.components],
             'n_units': self.n_units,
             'n_states': self.n_states,
-            'log_trans_mat': self.log_trans_mat,
+            'trans_mat': self.trans_mat,
             'init_states': self.init_states,
             'final_states': self.final_states
         }

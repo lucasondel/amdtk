@@ -65,7 +65,9 @@ class GaussianMLP(MLP):
         for idx in range(n_layers - 1):
             params += MLP.init_layer_params(dim_h, dim_h, scale)
         params += MLP.init_layer_params(dim_h, 2 * dim_out, scale)
-        params[-1][dim_out:] += precision
+
+        # Initialize the precision.
+        params[-1][dim_out:] -= np.log(precision)
         return params
 
     @staticmethod
@@ -80,7 +82,8 @@ class GaussianMLP(MLP):
         inputs = MLP.forward(h_params, activation, data)
         outputs = np.dot(inputs, linear_params[0]) + linear_params[1]
         mean, logvar = np.split(outputs, 2, axis=-1)
-        var = np.log(1 + np.exp(logvar))
+        #var = np.log(1 + np.exp(logvar))
+        var = np.exp(logvar)
         return mean, var
 
     @staticmethod
@@ -113,15 +116,17 @@ class GaussianResidualMLP(GaussianMLP):
         """Create a Gaussian residual MLP."""
         params = GaussianMLP.create(dim_in, dim_out, dim_h, n_layers, scale,
                                     precision)
-        params += GaussianResidualMLP.init_residual_params(dim_in, dim_out)
+        #params += GaussianResidualMLP.init_residual_params(dim_in, dim_out)
         return params
 
     @staticmethod
     def forward(params, activation, data):
         """Forward an input matrix through the Gaussian residual MLP."""
-        gauss_params, res_params = params[:-1], params[-1]
+        #gauss_params, res_params = params[:-1], params[-1]
+        gauss_params = params
         mean, var = GaussianMLP.forward(gauss_params, activation, data)
-        mean = mean + np.dot(data, res_params)
+        #mean = mean + np.dot(data, res_params)
+        mean = mean + data
         return mean, var
 
     @staticmethod

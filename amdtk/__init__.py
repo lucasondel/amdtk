@@ -17,6 +17,7 @@ from .internal_io import write_eval_to_clusters
 from .mlp_utils import GaussianResidualMLP
 
 from .dirichlet import Dirichlet
+from .dirichlet import HierarchicalDirichlet
 
 from .model import PersistentModel
 

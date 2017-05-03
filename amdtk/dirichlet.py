@@ -100,3 +100,37 @@ class Dirichlet(EFDPrior):
 
     # ------------------------------------------------------------------
 
+
+class HierarchicalDirichlet(object):
+    """2-levels Hierarchical Dirichlet distribution prior."""
+
+    def __init__(self, l1_concentration, l2_concentration, n_leaves, n_atoms):
+        self.n_leaves = n_leaves
+        self.n_atoms = n_atoms
+        self.l1_concentration = l1_concentration
+        self.l2_concentration = l2_concentration
+
+        l1_prior_counts = l1_concentration * np.ones(n_atoms)
+        self.root_prior = Dirichlet(l1_prior_counts)
+        self.root_posterior = Dirichlet(l1_prior_counts)
+
+        expected_pi0 = self.root_posterior.grad_log_partition
+        l2_prior_counts = l2_concentration * expected_pi0
+        self.leaves_prior = [Dirichlet(l2_prior_counts) for i in
+                             range(n_leaves)]
+        self.leaves_posterior = [Dirichlet(l2_prior_counts) for i in
+                                 range(n_leaves)]
+
+        self.vb_post_update()
+
+    def vb_post_update(self):
+        self._prob_matrix = np.zeros((self.n_atoms, self.n_leaves))
+
+        for idx, posterior in enumerate(self.leaves_posterior):
+            weights = np.exp(posterior.grad_log_partition)
+            weights /= weights.sum()
+            self._prob_matrix[:, idx] = weights
+
+    def get_expected_weights(self):
+        return self._prob_matrix
+

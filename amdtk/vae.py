@@ -165,12 +165,12 @@ class SVAE(VAE):
         latent = self.sample_latent(prior, data)
         return GaussianResidualMLP.sample(dec_params, np.tanh, latent)
 
-    def decode(self, prior, data, state_path=False):
+    def decode(self, prior, data, log_resps=None, state_path=False):
         params = self.params
         idx = len(params) // 2
         enc_params, dec_params = params[:idx], params[idx:]
         mean, var = GaussianResidualMLP.forward(enc_params, np.tanh, data)
-        return prior.decode(mean, state_path)
+        return prior.decode(mean, log_resps, state_path)
 
     def get_gradients(self, prior, data, log_resps=None):
         params = self.params
