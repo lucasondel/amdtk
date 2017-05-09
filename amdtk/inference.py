@@ -144,7 +144,6 @@ class StochasticVBOptimizer(Optimizer):
                 log_resps = log_resps[:min_len]
 
 
-
             # Get the accumulated sufficient statistics for the
             # given set of features.
             llh, new_acc_stats = model.vb_e_step(data, log_resps)
@@ -212,8 +211,8 @@ class SVAEAdamSGAOptimizer(Optimizer):
                 log_resps = None
 
             data = read_htk(fea_file)
-            data -= data_stats['mean']
-            data *= numpy.sqrt(data_stats['precision'])
+            #data -= data_stats['mean']
+            #data *= numpy.sqrt(data_stats['precision'])
 
             if log_resps is not None:
                 min_len = min(len(data), len(log_resps))
@@ -245,6 +244,7 @@ class SVAEAdamSGAOptimizer(Optimizer):
         self.b2 = float(args.get('b2', .999))
         self.lrate = float(args.get('lrate', .01))
         self.prior_lrate = float(args.get('prior_lrate'))
+        self.delta = float(args.get('delta', 1.))
         self.model = model[0]
         self.prior = model[1]
 
@@ -303,7 +303,7 @@ class SVAEAdamSGAOptimizer(Optimizer):
         self.adam_update(
             self.model.params,
             grads,
-            epoch,
+            time_step * self.delta,
             scale * self.lrate
         )
 

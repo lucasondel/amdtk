@@ -114,22 +114,50 @@ class HierarchicalDirichlet(object):
         self.root_prior = Dirichlet(l1_prior_counts)
         self.root_posterior = Dirichlet(l1_prior_counts)
 
-        expected_pi0 = self.root_posterior.grad_log_partition
-        l2_prior_counts = l2_concentration * expected_pi0
-        self.leaves_prior = [Dirichlet(l2_prior_counts) for i in
-                             range(n_leaves)]
+        std_params = self.root_posterior.natural_params + 1
+        weights = std_params / std_params.sum()
+
+        l2_prior_counts = l2_concentration * weights
         self.leaves_posterior = [Dirichlet(l2_prior_counts) for i in
                                  range(n_leaves)]
 
         self.vb_post_update()
 
+    def kl_div_posterior_prior(self):
+        kl_div = 0.
+        std_params = self.root_posterior.natural_params + 1
+        weights = std_params / std_params.sum()
+        l2_prior_counts = self.l2_concentration * weights
+        prior = Dirichlet(l2_prior_counts)
+        for idx, post in enumerate(self.leaves_posterior):
+            kl_div += post.kl_div(prior)
+        kl_div += self.root_posterior.kl_div(self.root_prior)
+        return kl_div
+
+    def natural_grad_update(self, acc_stats1, acc_stats2, lrate):
+        # Expected value of root weights.
+        std_params = self.root_posterior.natural_params + 1
+        weights = std_params / std_params.sum()
+
+        # Update hierarchical Dirichlet prior (level 2).
+        for idx, post in enumerate(self.leaves_posterior):
+            grad = self.l2_concentration * weights - 1 + acc_stats2[idx]
+            grad -= post.natural_params
+            post.natural_params = post.natural_params + lrate * grad
+
+        # Update hierarchical Dirichlet prior (level 1).
+        grad = self.root_prior.natural_params + acc_stats1
+        grad -= self.root_posterior.natural_params
+        self.root_posterior.natural_params = \
+            self.root_posterior.natural_params + lrate * grad
+
     def vb_post_update(self):
         self._prob_matrix = np.zeros((self.n_atoms, self.n_leaves))
 
         for idx, posterior in enumerate(self.leaves_posterior):
-            weights = np.exp(posterior.grad_log_partition)
-            weights /= weights.sum()
-            self._prob_matrix[:, idx] = weights
+            l2_weights = np.exp(posterior.grad_log_partition)
+            l2_weights /= l2_weights.sum()
+            self._prob_matrix[:, idx] = l2_weights
 
     def get_expected_weights(self):
         return self._prob_matrix

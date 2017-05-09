@@ -249,7 +249,6 @@ class SVAEPrior(PersistentModel, metaclass=abc.ABCMeta):
         """
         pass
 
-    @abc.abstractmethod
     def accumulate_stats(self, s_stats, resps, model_data):
         """Accumulate the sufficient statistics.
 
@@ -403,8 +402,8 @@ class LatentEFD(SVAEPrior, metaclass=abc.ABCMeta):
 
         """
         s_stats = self.get_sufficient_stats(data)
-        log_norm, resps, model_data = self.get_resps(s_stats, log_resps)
-        return log_norm, self.accumulate_stats(s_stats, resps, model_data)
+        log_norm, resps, acc_stats = self.get_resps(s_stats, log_resps)
+        return log_norm, acc_stats
 
 
     def vb_m_step(self, acc_stats):

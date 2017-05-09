@@ -165,12 +165,12 @@ class SVAE(VAE):
         latent = self.sample_latent(prior, data)
         return GaussianResidualMLP.sample(dec_params, np.tanh, latent)
 
-    def decode(self, prior, data, log_resps=None, state_path=False):
+    def decode(self, prior, data, state_path=False):
         params = self.params
         idx = len(params) // 2
         enc_params, dec_params = params[:idx], params[idx:]
         mean, var = GaussianResidualMLP.forward(enc_params, np.tanh, data)
-        return prior.decode(mean, log_resps, state_path)
+        return prior.decode(mean, state_path)
 
     def get_gradients(self, prior, data, log_resps=None):
         params = self.params
@@ -180,7 +180,7 @@ class SVAE(VAE):
 
         # Clustering.
         s_stats = prior.get_sufficient_stats(mean)
-        log_norm, resps, model_data = prior.get_resps(s_stats, log_resps)
+        log_norm, resps, acc_stats = prior.get_resps(s_stats, log_resps)
 
         # Expected value of the prior's components parameters.
         dim_latent = self.dim_latent
@@ -188,11 +188,11 @@ class SVAE(VAE):
                  for comp in prior.components]
         p_np2 = [comp.posterior.grad_log_partition[dim_latent:2 * dim_latent]
                  for comp in prior.components]
-        q_np1 = resps.dot(p_np1)
-        q_np2 = resps.dot(p_np2)
+        q_np1 = resps[0].T.dot(p_np1)
+        q_np2 = resps[0].T.dot(p_np2)
 
         val, grads = _svae_elbo_gradients(params, np.tanh, q_np1, q_np2, data)
-        return val, grads, prior.accumulate_stats(s_stats, resps, model_data)
+        return val, grads, acc_stats
 
     # PersistentModel interface implementation.
     # -----------------------------------------------------------------
