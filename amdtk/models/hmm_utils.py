@@ -117,3 +117,21 @@ def forward_backward(init_prob, trans_mat, init_states,
 
     return log_alphas, log_betas
 
+def viterbi(init_prob, trans_mat, init_states, final_states, llhs):
+    backtrack = np.zeros_like(llhs, dtype=int)
+    omega = np.zeros(llhs.shape[1]) + float('-inf')
+    omega[init_states] = llhs[0, init_states] + np.log(init_prob)
+    log_A = np.log(trans_mat.toarray())
+
+    for i in range(1, llhs.shape[0]):
+        hypothesis = omega + log_A.T
+        backtrack[i] = np.argmax(hypothesis, axis=1)
+        omega = llhs[i] + hypothesis[range(len(log_A)),
+                                     backtrack[i]]
+
+    path = [final_states[np.argmax(omega[final_states])]]
+    for i in reversed(range(1, len(llhs))):
+        path.insert(0, backtrack[i, path[0]])
+
+    return path
+
