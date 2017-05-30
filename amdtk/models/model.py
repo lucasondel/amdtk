@@ -111,7 +111,7 @@ class DiscreteLatentModel(PersistentModel, metaclass=abc.ABCMeta):
         self._latent_prior = value
 
     @property
-    def latent_prosterior(self):
+    def latent_posterior(self):
         return self._latent_posterior
 
     @latent_posterior.setter
@@ -140,7 +140,7 @@ class DiscreteLatentModel(PersistentModel, metaclass=abc.ABCMeta):
 
         """
         return np.vstack([comp.posterior.grad_log_partition
-                          for idx, comp in enumerate(self.components)])
+                          for comp in self.components])
 
     def get_sufficient_stats(self, data):
         """Sufficient statistics of the latent model.
@@ -173,6 +173,31 @@ class DiscreteLatentModel(PersistentModel, metaclass=abc.ABCMeta):
 
         """
         return self._exp_np_matrix.dot(s_stats.T)
+
+    def natural_grad_update(self, acc_stats, lrate):
+        """Natural gradient update.
+
+        Parameters
+        ----------
+        acc_stats : :class:`EFDStats`
+            Accumulated sufficient statistics.
+        lrate : float
+            Learning rate.
+
+        """
+        grad = self.latent_prior.natural_params + acc_stats[0]
+        grad -= self.latent_posterior.natural_params
+        self.latent_posterior.natural_params = \
+            self.latent_posterior.natural_params + lrate * grad
+
+        for idx, stats in enumerate(acc_stats[1]):
+            comp = self.components[idx]
+            grad = comp.prior.natural_params + stats
+            grad -= comp.posterior.natural_params
+            comp.posterior.natural_params = \
+                comp.posterior.natural_params + lrate * grad
+
+        self.post_update()
 
     def kl_div_posterior_prior(self):
         """Sum of KL divergence between posteriors/priors.

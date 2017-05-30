@@ -62,9 +62,9 @@ def _log_partition_symfunc():
     size = natural_params.shape[0] // 4
     np1, np2, np3, np4 = T.split(natural_params, 4 * [size], 4)
 
-    log_Z = T.sum(T.gammaln(.5 * (np4 + 1)), axis=1)
-    log_Z += T.sum(- .5 * (np4 + 1) * T.log(.5 * (np1 - (np2 ** 2) / np3)), axis=1)
-    log_Z += T.sum(-.5 * T.log(np3), axis=1)
+    log_Z = T.sum(T.gammaln(.5 * (np4 + 1)))
+    log_Z += T.sum(- .5 * (np4 + 1) * T.log(.5 * (np1 - (np2 ** 2) / np3)))
+    log_Z += T.sum(-.5 * T.log(np3))
 
     func = theano.function([natural_params], log_Z)
     grad_func = theano.function([natural_params],
@@ -76,6 +76,14 @@ _lp_func, _grad_lp_func = _log_partition_symfunc()
 
 class NormalGamma(EFDPrior):
     """Normal-Gamma density prior."""
+
+    @staticmethod
+    def _log_partition_func(natural_params):
+        return _lp_func(natural_params)
+
+    @staticmethod
+    def _grad_log_partition_func(natural_params):
+        return _grad_lp_func(natural_params)
 
     def __init__(self, mean, kappa, rate, scale):
         """Initialize a Normal-Gamma Distribution.

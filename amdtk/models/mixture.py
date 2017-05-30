@@ -66,8 +66,8 @@ class Mixture(DiscreteLatentModel):
             prior = NormalGamma(
                 prior_mean,
                 np.ones_like(mean),
-                np.ones_like(precision),
-                np.ones_like(precision) * prior_var,
+                np.ones_like(var),
+                prior_var,
             )
             priors.append(prior)
 
@@ -81,10 +81,10 @@ class Mixture(DiscreteLatentModel):
             posterior = NormalGamma(
                 s_mean,
                 np.ones_like(mean),
-                np.ones_like(precision),
-                prior_strength / var
+                np.ones_like(var),
+                prior_var
             )
-        components.append(amdtk.NormalDiag(priors[i], posterior))
+            components.append(NormalDiag(priors[i], posterior))
 
         return Mixture(dirichlet_prior, dirichlet_posterior, components)
 
@@ -97,8 +97,8 @@ class Mixture(DiscreteLatentModel):
 
     def get_posteriors(self, s_stats, accumulate=False):
         # Expected value of the log-likelihood.
-        exp_llh = self.components_exp_llh(s_stats, log_resps)
-        exp_llh += self.posterior.grad_log_partition[:, np.newaxis]
+        exp_llh = self.components_exp_llh(s_stats)
+        exp_llh += self.latent_posterior.grad_log_partition[:, np.newaxis]
 
         # Softmax function to get the posteriors.
         log_norm = logsumexp(exp_llh, axis=0)

@@ -40,7 +40,6 @@ class Optimizer(metaclass=abc.ABCMeta):
         self.model = model
         self.time_step = 0
         self.data_stats = data_stats
-        self.phone_list = phone_list
 
         with self.dview.sync_imports():
             import numpy
@@ -108,17 +107,17 @@ class StochasticVBOptimizer(Optimizer):
 
         for arg in args_list:
             fea_file = arg
-            log_resps = None
 
             # Mean / Variance normalization.
             data = read_htk(fea_file)
             data -= data_stats['mean']
-            data *= numpy.sqrt(data_stats['precision'])
+            data /= numpy.sqrt(data_stats['var'])
 
             # Get the accumulated sufficient statistics for the
             # given set of features.
             s_stats = model.get_sufficient_stats(data)
-            posts, llh, new_acc_stats = model.get_posteriors(s_stats)
+            posts, llh, new_acc_stats = model.get_posteriors(s_stats,
+                                                             accumulate=True)
 
             exp_llh += numpy.sum(llh)
             n_frames += len(data)
@@ -130,8 +129,8 @@ class StochasticVBOptimizer(Optimizer):
         return (exp_llh, acc_stats, n_frames)
 
 
-    def __init__(self, dview, data_stats, args, model, phone_list=None):
-        Optimizer.__init__(self, dview, data_stats, args, model, phone_list)
+    def __init__(self, dview, data_stats, args, model):
+        Optimizer.__init__(self, dview, data_stats, args, model)
         self.lrate = float(args.get('lrate', 1))
 
     def train(self, fea_list, epoch, time_step):
