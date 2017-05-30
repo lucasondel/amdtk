@@ -27,92 +27,41 @@ DEALINGS IN THE SOFTWARE.
 
 import numpy as np
 from scipy.special import logsumexp
-from .efd import EFDStats, LatentEFD
+from .model import EFDStats, DiscreteLatentModel
 
 
-class Mixture(LatentEFD):
+class Mixture(DiscreteLatentModel):
     """Bayesian Mixture Model.
 
     Bayesian Mixture Model with a Dirichlet prior over the weights.
 
     """
 
-    def __init__(self, prior, posterior, components):
-        LatentEFD.__init__(self, prior, posterior, components)
-        values = np.asarray(self.get_components_params_matrix(),
-                            dtype=theano.config.floatX)
-        self.sym_comp_params_matrix = theano.shared(values, borrow=True)
-        self.vb_post_update()
+    def __init__(self, latent_prior, latent_posterior, components):
+        DiscreteLatentModel.__init__(self, latent_prior, latent_posterior,
+                                     components)
 
-    # SVAEPrior interface.
-    # ------------------------------------------------------------------
-
-    def sym_classify(self, s_stats):
-        """Symbolic computation of a Gaussian classifier."""
-        exp_llh = T.dot(self.sym_comp_params_matrix, s_stats.T)
-        exp_llh += self.posterior.grad_log_partition[:, np.newaxis]
-        return T.nnet.softmax(exp_llh.T)
-
-    def get_resps(self, s_stats, log_resps=None):
-        exp_llh = self.components_exp_llh(s_stats, log_resps)
-        exp_llh += self.posterior.grad_log_partition[:, np.newaxis]
-        if log_resps is not None:
-            exp_llh += log_resps.T
-        log_norm = logsumexp(exp_llh, axis=0)
-        resps = np.exp((exp_llh - log_norm))
-        acc_stats1 = resps.T.sum(axis=0)
-        acc_stats2 = resps.dot(s_stats)
-        acc_stats = EFDStats([acc_stats1, acc_stats2])
-        return log_norm, [resps], acc_stats
-
-    def accumulate_stats(self, s_stats, resps, model_data):
-        acc_stats1 = resps.sum(axis=0)
-        acc_stats2 = resps.T.dot(s_stats)
-        return EFDStats([acc_stats1, acc_stats2])
-
-    def vb_post_update(self):
-        LatentEFD.vb_post_update(self)
-        values = np.asarray(self.get_components_params_matrix(),
-                            dtype=theano.config.floatX)
-        self.sym_comp_params_matrix.set_value(values)
-
-    # PersistentModel interface implementation.
+    # DiscreteLatentModel interface implementation.
     # -----------------------------------------------------------------
 
-    def to_dict(self):
-        return {
-            'prior_class': self.prior.__class__,
-            'prior_data': self.prior.to_dict(),
-            'posterior_class': self.posterior.__class__,
-            'posterior_data': self.posterior.to_dict(),
-            'components_class': [comp.__class__ for comp in self.components],
-            'components_data': [comp.to_dict() for comp in self.components]
-        }
+    def get_posteriors(self, s_stats, accumulate=False):
+        # Expected value of the log-likelihood.
+        exp_llh = self.components_exp_llh(s_stats, log_resps)
+        exp_llh += self.posterior.grad_log_partition[:, np.newaxis]
 
-    @staticmethod
-    def load_from_dict(model_data):
-        model = Mixture.__new__(Mixture)
+        # Softmax function to get the posteriors.
+        log_norm = logsumexp(exp_llh, axis=0)
+        resps = np.exp((exp_llh - log_norm))
 
-        prior_cls = model_data['prior_class']
-        prior_data = model_data['prior_data']
-        model.prior = prior_cls.load_from_dict(prior_data)
+        # Accumulate the responsibilties if requested.
+        if accumulate:
+            acc_stats1 = resps.T.sum(axis=0)
+            acc_stats2 = resps.dot(s_stats)
+            acc_stats = EFDStats([acc_stats1, acc_stats2])
 
-        posterior_cls = model_data['posterior_class']
-        posterior_data = model_data['posterior_data']
-        model.posterior = posterior_cls.load_from_dict(posterior_data)
+            return resps, log_norm, acc_stats
 
-        components_cls = model_data['components_class']
-        components_data = model_data['components_data']
-        components = []
-        for idx in range(len(components_cls)):
-            component = \
-                components_cls[idx].load_from_dict(components_data[idx])
-            components.append(component)
-        model.components = components
+        return resps, log_norm
 
-        model.vb_post_update()
-
-        return model
-
-    # ------------------------------------------------------------------
+    # -----------------------------------------------------------------
 
