@@ -31,28 +31,9 @@ import time
 import numpy as np
 from ipyparallel.util import interactive
 
-
-def _create_ali_log_resps(phone_list, labels, extra_frames=1):
-    import numpy
-    n_comp = len(phone_list)
-    log_resps = numpy.zeros((len(labels), n_comp)) - np.inf
-    previous_phone = labels[0]
-    for i in range(len(labels)):
-        phone = labels[i]
-        phone_idx = phone_list.index(phone)
-        log_resps[i, phone_idx] = 0.
-        if previous_phone != phone and extra_frames > 0:
-            previous_phone_idx = phone_list.index(previous_phone)
-            log_resps[i: i + extra_frames, previous_phone_idx] = 0.
-            log_resps[i - extra_frames: i, phone_idx] = 0.
-        previous_phone = phone
-
-    return log_resps
-
-
 class Optimizer(metaclass=abc.ABCMeta):
 
-    def __init__(self, dview, data_stats, args, model, phone_list=None):
+    def __init__(self, dview, data_stats, args, model):
         self.dview = dview
         self.epochs = int(args.get('epochs', 1))
         self.batch_size = int(args.get('batch_size', 2))
@@ -66,8 +47,6 @@ class Optimizer(metaclass=abc.ABCMeta):
             from amdtk import read_htk
 
         self.dview.push({
-            'phone_list': phone_list,
-            '_create_ali_log_resps': _create_ali_log_resps,
             'data_stats': data_stats
         })
 
@@ -128,27 +107,18 @@ class StochasticVBOptimizer(Optimizer):
         n_frames = 0
 
         for arg in args_list:
-            if isinstance(arg, numpy.ndarray):
-                fea_file = arg[0]
-                labels = arg[1]
-                log_resps = _create_ali_log_resps(phone_list, labels)
-            else:
-                fea_file = arg
-                log_resps = None
+            fea_file = arg
+            log_resps = None
 
+            # Mean / Variance normalization.
             data = read_htk(fea_file)
             data -= data_stats['mean']
             data *= numpy.sqrt(data_stats['precision'])
 
-            if log_resps is not None:
-                min_len = min(len(data), len(log_resps))
-                data = data[:min_len]
-                log_resps = log_resps[:min_len]
-
-
             # Get the accumulated sufficient statistics for the
             # given set of features.
-            llh, new_acc_stats = model.vb_e_step(data, log_resps)
+            s_stats = model.get_sufficient_stats(data)
+            posts, llh, new_acc_stats = model.get_posteriors(s_stats)
 
             exp_llh += numpy.sum(llh)
             n_frames += len(data)
@@ -189,129 +159,6 @@ class StochasticVBOptimizer(Optimizer):
         scale = self.data_stats['count'] / n_frames
         acc_stats *= scale
         self.model.natural_grad_update(acc_stats, self.lrate)
-
-        return (scale * exp_llh - kl_div) / self.data_stats['count']
-
-
-class SVAEAdamSGAOptimizer(Optimizer):
-
-    @staticmethod
-    @interactive
-    def gradients(args_list):
-        exp_llh = 0.
-        acc_stats = None
-        gradients = None
-        n_frames = 0
-
-        for arg in args_list:
-            if isinstance(arg, numpy.ndarray):
-                fea_file = arg[0]
-                labels = arg[1]
-                log_resps = _create_ali_log_resps(phone_list, labels)
-            else:
-                fea_file = arg
-                log_resps = None
-
-            data = read_htk(fea_file)
-            data -= data_stats['mean']
-            data *= numpy.sqrt(data_stats['precision'])
-
-            if log_resps is not None:
-                min_len = min(len(data), len(log_resps))
-                data = data[:min_len]
-                log_resps = log_resps[:min_len]
-
-            # Get the gradients.
-            llh, new_gradients, new_acc_stats = \
-                model.get_gradients(prior, data, log_resps)
-
-            # Global accumulators.
-            exp_llh += llh
-            n_frames += len(data)
-            if gradients is None:
-                acc_stats = new_acc_stats
-                gradients = new_gradients
-            else:
-                acc_stats += new_acc_stats
-                for idx in range(len(new_gradients)):
-                    gradients[idx] += new_gradients[idx]
-
-        return (exp_llh, gradients, acc_stats, n_frames)
-
-
-    def __init__(self, dview, data_stats, args, model, phone_list=None):
-        Optimizer.__init__(self, dview, data_stats, args, model[0],
-                                  phone_list)
-        self.b1 = float(args.get('b1', .95))
-        self.b2 = float(args.get('b2', .999))
-        self.lrate = float(args.get('lrate', .01))
-        self.prior_lrate = float(args.get('prior_lrate'))
-        self.delta = float(args.get('delta', 1.))
-        self.model = model[0]
-        self.prior = model[1]
-
-        self.pmean = []
-        self.pvar = []
-        for param in self.model.params:
-            self.pmean.append(np.zeros_like(param.get_value()))
-            self.pvar.append(np.zeros_like(param.get_value()))
-
-    def adam_update(self, params, gradients, time_step, lrate):
-        gamma = np.sqrt(1 - self.b2**time_step) / (1 - self.b1**time_step)
-
-        for idx in range(len(params)):
-            grad = gradients[idx]
-            pmean = self.pmean[idx]
-            pvar = self.pvar[idx]
-
-            # Biased moments estimate.
-            new_m = self.b1 * pmean + (1. - self.b1) * grad
-            new_v = self.b2 * pvar + (1. - self.b2) * (grad**2)
-
-            # Biased corrected moments estimate.
-            c_m = new_m / (1 - self.b1**time_step)
-            c_v = new_v / (1 - self.b2**time_step)
-
-            p_value = params[idx].get_value()
-            #params[idx].set_value(p_value + lrate * grad)
-            params[idx].set_value(p_value + lrate * c_m / (np.sqrt(c_v) + 1e-8))
-
-            self.pmean[idx] = new_m
-            self.pvar[idx] = new_v
-
-    def train(self, fea_list, epoch, time_step):
-        # Propagate the model to all the remote clients.
-        self.dview.push({
-            'model': self.model,
-            'prior': self.prior,
-        })
-
-        # Parallel computation of the gradients.
-        res_list = self.dview.map_sync(SVAEAdamSGAOptimizer.gradients,
-                                       fea_list)
-
-        exp_llh, grads, acc_stats, n_frames = res_list[0]
-        for val1, val2, val3, val4 in res_list[1:]:
-            exp_llh += val1
-            grads += val2
-            acc_stats += val3
-            n_frames += val4
-
-        # Scale the statistics.
-        scale = self.data_stats['count'] / n_frames
-
-        # Update the parameters.
-        self.prior.natural_grad_update(acc_stats, self.prior_lrate)
-
-        # Update the parameters of the VAE.
-        self.adam_update(
-            self.model.params,
-            grads,
-            time_step * self.delta,
-            scale * self.lrate
-        )
-
-        kl_div = self.prior.kl_div_posterior_prior()
 
         return (scale * exp_llh - kl_div) / self.data_stats['count']
 

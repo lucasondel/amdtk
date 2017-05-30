@@ -1,5 +1,6 @@
+
 """
-Main class of the mixture model.
+Bayesian Mixture Model.
 
 Copyright (C) 2017, Lucas Ondel
 
@@ -28,6 +29,7 @@ DEALINGS IN THE SOFTWARE.
 import numpy as np
 from scipy.special import logsumexp
 from .model import EFDStats, DiscreteLatentModel
+from ..densities import Dirichlet, NormalGamma, NormalDiag
 
 
 class Mixture(DiscreteLatentModel):
@@ -36,6 +38,55 @@ class Mixture(DiscreteLatentModel):
     Bayesian Mixture Model with a Dirichlet prior over the weights.
 
     """
+
+    def create(n_comp, mean, var):
+        """Create and initialize a Bayesian Mixture Model.
+
+
+        Parameters
+        ----------
+        n_comp : int
+            Number of components in the mixture.
+        mean : numpy.ndarray
+            Mean of the data set to train on.
+        var : numpy.ndarray
+            Variance of the data set to train on.
+
+        Returns
+        -------
+        model : :class:`Mixture`
+            A new mixture model.
+
+        """
+        priors = []
+        prior_mean = mean.copy()
+        prior_var = var.copy()
+        for i in range(n_comp):
+
+            prior = NormalGamma(
+                prior_mean,
+                np.ones_like(mean),
+                np.ones_like(precision),
+                np.ones_like(precision) * prior_var,
+            )
+            priors.append(prior)
+
+        dirichlet_prior = Dirichlet(np.ones(n_comp))
+        dirichlet_posterior = Dirichlet(np.ones(n_comp))
+
+        components = []
+        cov = np.diag(prior_var)
+        for i in range(n_comp):
+            s_mean = np.random.multivariate_normal(mean, cov)
+            posterior = NormalGamma(
+                s_mean,
+                np.ones_like(mean),
+                np.ones_like(precision),
+                prior_strength / var
+            )
+        components.append(amdtk.NormalDiag(priors[i], posterior))
+
+        return Mixture(dirichlet_prior, dirichlet_posterior, components)
 
     def __init__(self, latent_prior, latent_posterior, components):
         DiscreteLatentModel.__init__(self, latent_prior, latent_posterior,
