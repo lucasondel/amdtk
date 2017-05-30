@@ -183,7 +183,7 @@ class PhoneLoop(LatentEFD, SVAEPrior):
             state_llh.T[:, np.newaxis, :])
 
         if extended_lresps is not None:
-            state_llh += extended_lresps
+            state_llh = extended_lresps
 
         # Forward-Bacward algorithm.
         log_alphas, log_betas = forward_backward(

@@ -27,6 +27,8 @@ DEALINGS IN THE SOFTWARE.
 
 import numpy as np
 from scipy.special import logsumexp
+import theano
+import theano.tensor as T
 from .efd import EFDStats, LatentEFD
 from .svae_prior import SVAEPrior
 
@@ -40,23 +42,44 @@ class Mixture(LatentEFD, SVAEPrior):
 
     def __init__(self, prior, posterior, components):
         LatentEFD.__init__(self, prior, posterior, components)
+        values = np.asarray(self.get_components_params_matrix(),
+                            dtype=theano.config.floatX)
+        self.sym_comp_params_matrix = theano.shared(values, borrow=True)
         self.vb_post_update()
+
+
 
     # SVAEPrior interface.
     # ------------------------------------------------------------------
 
+    def sym_classify(self, s_stats):
+        """Symbolic computation of a Gaussian classifier."""
+        exp_llh = T.dot(self.sym_comp_params_matrix, s_stats.T)
+        exp_llh += self.posterior.grad_log_partition[:, np.newaxis]
+        return T.nnet.softmax(exp_llh.T)
+
     def get_resps(self, s_stats, log_resps=None):
         exp_llh = self.components_exp_llh(s_stats, log_resps)
         exp_llh += self.posterior.grad_log_partition[:, np.newaxis]
+        if log_resps is not None:
+            exp_llh += log_resps.T
         log_norm = logsumexp(exp_llh, axis=0)
         resps = np.exp((exp_llh - log_norm))
-        return log_norm, resps.T, exp_llh
+        acc_stats1 = resps.T.sum(axis=0)
+        acc_stats2 = resps.dot(s_stats)
+        acc_stats = EFDStats([acc_stats1, acc_stats2])
+        return log_norm, [resps], acc_stats
 
     def accumulate_stats(self, s_stats, resps, model_data):
         acc_stats1 = resps.sum(axis=0)
         acc_stats2 = resps.T.dot(s_stats)
         return EFDStats([acc_stats1, acc_stats2])
 
+    def vb_post_update(self):
+        LatentEFD.vb_post_update(self)
+        values = np.asarray(self.get_components_params_matrix(),
+                            dtype=theano.config.floatX)
+        self.sym_comp_params_matrix.set_value(values)
 
     # PersistentModel interface implementation.
     # -----------------------------------------------------------------

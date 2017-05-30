@@ -26,10 +26,195 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
 import abc
-import autograd.numpy as np
+import numpy as np
+import theano
+import theano.tensor as T
 
 
-class MLP(metaclass=abc.ABCMeta):
+def _linear(x):
+    """Linear activation. Do nothing on the input."""
+    return x
+
+
+# Possible activation for the hidden units.
+ACTIVATIONS = {
+    'softmax': T.nnet.softmax,
+    'sigmoid': T.nnet.sigmoid,
+    'tanh': T.tanh,
+    'relu': T.nnet.relu,
+    'linear': _linear
+}
+
+
+class MLPError(Exception):
+    """Base class for exceptions in this module."""
+
+    pass
+
+
+class UnkownActivationError(MLPError):
+    """Raised when the given activation is not known."""
+
+    def __init__(self, activation):
+        self.activation = str(activation)
+
+    def __str__(self):
+        return '"' + self.activation + '" is not one of the pre-defined " \
+               "activations: "' + '", "'.join(ACTIVATIONS.keys()) + '"'
+
+
+def _init_weights_matrix(dim_in, dim_out, activation, borrow=True):
+    val = np.sqrt(6. / (dim_in + dim_out))
+    if activation == 'sigmoid':
+        retval = 4 * np.random.uniform(low=-val, high=val,
+                                       size=(dim_in, dim_out))
+    elif activation == 'tanh':
+        retval = np.random.uniform(low=-val, high=val,
+                                   size=(dim_in, dim_out))
+    elif (activation == 'relu' or activation == 'linear' or
+         activation == 'softmax'):
+        retval = np.random.normal(0., 0.01, size=(dim_in, dim_out))
+    else:
+        raise UnkownActivationError(activation)
+
+    return theano.shared(np.asarray(retval, dtype=theano.config.floatX),
+                         borrow=borrow)
+
+
+def init_residual_weights_matrix(dim_in, dim_out, borrow=True):
+    """Partial isometry initialization."""
+    if dim_out == dim_in:
+        weights = np.identity(dim_in)
+    else:
+        d = max(dim_in, dim_out)
+        weights = np.linalg.qr(np.random.randn(d,d))[0][:dim_in,:dim_out]
+    return theano.shared(np.asarray(weights, dtype=theano.config.floatX),
+                         borrow=borrow)
+
+
+def _init_bias(dim, borrow=True):
+    return theano.shared(np.zeros(dim, dtype=theano.config.floatX) + .01,
+                                  borrow=borrow)
+
+
+class LogisticRegressionLayer(object):
+
+    def __init__(self, inputs, dim_in, dim_out, activation):
+        self.inputs = inputs
+        self.dim_in = dim_in
+        self.dim_out = dim_out
+        weights = _init_weights_matrix(dim_in, dim_out, activation)
+        bias = _init_bias(dim_out)
+        self.outputs = ACTIVATIONS[activation](T.dot(inputs, weights) + bias)
+        self.params = [weights, bias]
+
+class StdLayer(object):
+
+    def __init__(self, inputs, dim_in, dim_out, activation):
+        self.inputs = inputs
+        self.dim_in = dim_in
+        self.dim_out = dim_out
+        self.activation = activation
+        weights = _init_weights_matrix(dim_in, dim_out, activation)
+        bias = _init_bias(dim_out)
+        self.outputs = ACTIVATIONS[activation](T.dot(inputs, weights) + bias)
+        self.params = [weights, bias]
+
+
+class GaussianLayer(object):
+
+    def __init__(self, inputs, dim_in, dim_out, activation):
+        self.inputs = inputs
+        self.dim_in = dim_in
+        self.dim_out = dim_out
+        self.activation = activation
+        shared_layer = StdLayer(inputs, dim_in, 2 * dim_out, activation)
+
+        self.mean, raw_logvar = \
+            theano.tensor.split(shared_layer.outputs, [dim_out, dim_out], 2,
+                                axis=-1)
+        #self.var = T.log(1 + T.exp(raw_logvar))
+        self.var = T.exp(raw_logvar)
+
+        self.params = shared_layer.params
+        self.outputs = self.mean
+
+
+# Possible layer types.
+LAYER_TYPES = {
+   'standard': StdLayer,
+   'gaussian': GaussianLayer
+}
+
+
+class NeuralNetwork(object):
+
+    def __init__(self, structure, residuals, inputs=None):
+        if inputs is None:
+            self.inputs = T.matrix(dtype=theano.config.floatX)
+        else:
+            self.inputs = inputs
+
+        # Build the neural network.
+        self.layers = []
+        self.params = []
+        current_inputs = self.inputs
+        for layer_type, dim_in, dim_out, activation in structure:
+            self.layers.append(LAYER_TYPES[layer_type](current_inputs, dim_in,
+                                                       dim_out, activation))
+            self.params += self.layers[-1].params
+            current_inputs = self.layers[-1].outputs
+
+        # Add the residual connections.
+        for residual_in, residual_out in residuals:
+            dim_in = self.layers[residual_in].dim_in
+            dim_out = self.layers[residual_out].dim_out
+            weights = init_residual_weights_matrix(dim_in, dim_out)
+            self.params += [weights]
+            self.layers[residual_out].outputs += \
+                T.dot(self.layers[residual_in].inputs, weights)
+
+        self.outputs = self.layers[-1].outputs
+
+
+class MLP(NeuralNetwork):
+
+    def __init__(self, structure, residuals, inputs):
+        NeuralNetwork.__init__(self, structure, residuals, inputs)
+        self.log_pred = T.log(self.layers[-1].outputs)
+
+        # Build the functions.
+        self.forward = theano.function(
+            inputs=[self.inputs],
+            outputs=[self.log_pred]
+        )
+
+
+class GaussianNeuralNetwork(NeuralNetwork):
+
+    def __init__(self, structure, residuals, inputs=None):
+        NeuralNetwork.__init__(self, structure, residuals, inputs)
+        self.mean = self.layers[-1].outputs
+        self.var = self.layers[-1].var
+
+        # Noise variable for the reparameterization trick.
+        if "gpu" in theano.config.device:
+            srng = theano.sandbox.cuda.rng_curand.CURAND_RandomStreams()
+        else:
+            srng = T.shared_randomstreams.RandomStreams()
+            self.eps = srng.normal(self.mean.shape)
+
+        # Latent variable.
+        self.sample = self.mean + T.sqrt(self.var) * self.eps
+
+        # Build the functions.
+        self.forward = theano.function(
+            inputs=[self.inputs],
+            outputs=[self.mean, self.var]
+        )
+
+
+class MLPold(metaclass=abc.ABCMeta):
     """Base class for MLP objects."""
 
     @staticmethod

@@ -137,6 +137,8 @@ class StochasticVBOptimizer(Optimizer):
                 log_resps = None
 
             data = read_htk(fea_file)
+            data -= data_stats['mean']
+            data *= numpy.sqrt(data_stats['precision'])
 
             if log_resps is not None:
                 min_len = min(len(data), len(log_resps))
@@ -211,8 +213,8 @@ class SVAEAdamSGAOptimizer(Optimizer):
                 log_resps = None
 
             data = read_htk(fea_file)
-            #data -= data_stats['mean']
-            #data *= numpy.sqrt(data_stats['precision'])
+            data -= data_stats['mean']
+            data *= numpy.sqrt(data_stats['precision'])
 
             if log_resps is not None:
                 min_len = min(len(data), len(log_resps))
@@ -251,8 +253,8 @@ class SVAEAdamSGAOptimizer(Optimizer):
         self.pmean = []
         self.pvar = []
         for param in self.model.params:
-            self.pmean.append(np.zeros_like(param))
-            self.pvar.append(np.zeros_like(param))
+            self.pmean.append(np.zeros_like(param.get_value()))
+            self.pvar.append(np.zeros_like(param.get_value()))
 
     def adam_update(self, params, gradients, time_step, lrate):
         gamma = np.sqrt(1 - self.b2**time_step) / (1 - self.b1**time_step)
@@ -270,7 +272,9 @@ class SVAEAdamSGAOptimizer(Optimizer):
             c_m = new_m / (1 - self.b1**time_step)
             c_v = new_v / (1 - self.b2**time_step)
 
-            params[idx] += lrate * c_m / (np.sqrt(c_v) + 1e-8)
+            p_value = params[idx].get_value()
+            #params[idx].set_value(p_value + lrate * grad)
+            params[idx].set_value(p_value + lrate * c_m / (np.sqrt(c_v) + 1e-8))
 
             self.pmean[idx] = new_m
             self.pvar[idx] = new_v

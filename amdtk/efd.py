@@ -296,6 +296,7 @@ class LatentEFD(SVAEPrior, metaclass=abc.ABCMeta):
     @posterior.setter
     def posterior(self, value):
         self._posterior = value
+        self._p_matrix = self.get_components_params_matrix()
 
     @property
     def components(self):
@@ -361,9 +362,11 @@ class LatentEFD(SVAEPrior, metaclass=abc.ABCMeta):
             can be active.
 
         """
-        retval = self.components_params_matrix.dot(s_stats.T)
+
         if log_resps is not None:
-            retval += log_resps.T
+            retval = log_resps.T
+        else:
+            retval = self.components_params_matrix.dot(s_stats.T)
         return retval
 
     def kl_div_posterior_prior(self):

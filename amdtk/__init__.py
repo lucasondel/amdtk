@@ -42,6 +42,6 @@ from .phone_loop import PhoneLoop
 
 from .svae_prior import SVAEPrior
 
-from .vae import VAE
 from .vae import SVAE
+from .vae import MLPClassifier
 
