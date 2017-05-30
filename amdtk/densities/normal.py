@@ -1,5 +1,6 @@
+
 """
-Bayesian Normal density.
+Normal density with conjugate prior.
 
 Copyright (C) 2017, Lucas Ondel
 

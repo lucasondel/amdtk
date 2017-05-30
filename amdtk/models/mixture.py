@@ -27,13 +27,10 @@ DEALINGS IN THE SOFTWARE.
 
 import numpy as np
 from scipy.special import logsumexp
-import theano
-import theano.tensor as T
 from .efd import EFDStats, LatentEFD
-from .svae_prior import SVAEPrior
 
 
-class Mixture(LatentEFD, SVAEPrior):
+class Mixture(LatentEFD):
     """Bayesian Mixture Model.
 
     Bayesian Mixture Model with a Dirichlet prior over the weights.
@@ -46,8 +43,6 @@ class Mixture(LatentEFD, SVAEPrior):
                             dtype=theano.config.floatX)
         self.sym_comp_params_matrix = theano.shared(values, borrow=True)
         self.vb_post_update()
-
-
 
     # SVAEPrior interface.
     # ------------------------------------------------------------------

@@ -43,8 +43,8 @@ class PersistentModel(metaclass=abc.ABCMeta):
         """
         pass
 
-    @abc.abstractstaticmethod
-    def load_from_dict(model_data):
+    @abc.abstractclassmethod
+    def load_from_dict(cls, model_data):
         """Create and initialize the model from a dictionary.
 
         Parameters

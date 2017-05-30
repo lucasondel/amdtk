@@ -71,7 +71,7 @@ def _log_partition_symfunc():
                                 T.grad(T.sum(log_Z), natural_params))
     return func, grad_func
 
-_log_partition_func, _grad_log_partition_func = _log_partition_symfunc()
+_lp_func, _grad_lp_func = _log_partition_symfunc()
 
 
 class NormalGamma(EFDPrior):
@@ -92,57 +92,11 @@ class NormalGamma(EFDPrior):
             scale parameter of the Gamma density.
 
         """
-        # Natural parameters.
-        self._natural_params = np.hstack([
+        EFDPrior.__init__(self)
+        self.natural_params = np.hstack([
             np.asarray(kappa * (mean ** 2) + 2 * scale, dtype=float),
             np.asarray(kappa * mean, dtype=float),
             np.asarray(kappa, dtype=float),
             np.asarray(2 * (rate - 1./2), dtype=float)
         ])
-
-        # Compile the model.
-        self._build()
-
-    def _build(self):
-        natp_mat = self._natural_params[np.newaxis, :]
-        self._log_partition = _log_partition_func(natp_mat)[0]
-        self._grad_log_partition = _grad_log_partition_func(natp_mat)[0]
-
-    # PersistentModel interface implementation.
-    # -----------------------------------------------------------------
-
-    def to_dict(self):
-        return {'natural_params': self._natural_params}
-
-    @staticmethod
-    def load_from_dict(model_data):
-        model = NormalGamma.__new__(NormalGamma)
-        model._natural_params = model_data['natural_params']
-        model._build()
-
-        return model
-
-    # EFDPrior interface implementation.
-    # -----------------------------------------------------------------
-
-    @property
-    def natural_params(self):
-        return self._natural_params
-
-    @natural_params.setter
-    def natural_params(self, value):
-        self._natural_params = value
-        self._log_partition = _log_partition_func(natp_mat)[0]
-        self._grad_log_partition = \
-            _grad_log_partition_func(natp_mat)[0]
-
-    @property
-    def log_partition(self):
-        return self._log_partition
-
-    @property
-    def grad_log_partition(self):
-        return self._grad_log_partition
-
-    # -----------------------------------------------------------------
 

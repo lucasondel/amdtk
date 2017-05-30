@@ -33,9 +33,9 @@ from .efd import EFDPrior
 
 
 def _log_partition_symfunc():
-    natural_params = T.matrix()
-    log_Z = T.sum(T.gammaln(natural_params + 1.), axis=1) -\
-        T.gammaln(T.sum(natural_params + 1, axis=1))
+    natural_params = T.vector()
+    log_Z = T.sum(T.gammaln(natural_params + 1.)) -\
+        T.gammaln(T.sum(natural_params + 1))
 
     func = theano.function([natural_params], log_Z)
     grad_func = theano.function([natural_params],
@@ -43,57 +43,21 @@ def _log_partition_symfunc():
     return func, grad_func
 
 
-_log_partition_func, _grad_log_partition_func = _log_partition_symfunc()
+_lp_func, _grad_lp_func = _log_partition_symfunc()
 
 
 class Dirichlet(EFDPrior):
     """Dirichlet Distribution."""
 
-    def __init__(self, prior_counts):
-        self._natural_params = np.asarray(prior_counts - 1, dtype=float)
-        self._build()
-
-    def _build(self):
-        natp_mat = self._natural_params[np.newaxis, :]
-        self._log_partition = _log_partition_func(natp_mat)[0]
-        self._grad_log_partition = \
-            _grad_log_partition_func(natp_mat)[0]
-
-    # PersistentModel interface implementation.
-    # -----------------------------------------------------------------
-
-    def to_dict(self):
-        return {'natural_params': self._natural_params}
+    @staticmethod
+    def _log_partition_func(natural_params):
+        return _lp_func(natural_params)
 
     @staticmethod
-    def load_from_dict(model_data):
-        model = Dirichlet.__new__(Dirichlet)
-        model._natural_params = model_data['natural_params']
-        model._build()
-        return model
+    def _grad_log_partition_func(natural_params):
+        return _grad_lp_func(natural_params)
 
-    # EFDPrior interface implementation.
-    # -----------------------------------------------------------------
-
-    @property
-    def natural_params(self):
-        return self._natural_params
-
-    @natural_params.setter
-    def natural_params(self, value):
-        self._natural_params = value
-        natp_mat = self._natural_params[np.newaxis, :]
-        self._log_partition = _log_partition_func(natp_mat)[0]
-        self._grad_log_partition = \
-            _grad_log_partition_func(natp_mat)[0]
-
-    @property
-    def log_partition(self):
-        return self._log_partition
-
-    @property
-    def grad_log_partition(self):
-        return self._grad_log_partition
-
-    # -----------------------------------------------------------------
+    def __init__(self, prior_counts):
+        EFDPrior.__init__(self)
+        self.natural_params = np.asarray(prior_counts - 1, dtype=float)
 
