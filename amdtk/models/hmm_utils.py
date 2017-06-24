@@ -68,7 +68,7 @@ def create_linear_transition_matrix(n_units, n_states):
         for offset in range(n_states):
             state = init_state + offset
             trans_mat[state, state:state + 2] = 0.5
-
+    trans_mat[-1, -1] = 1.
     return csc_matrix(trans_mat)
 
 
@@ -106,6 +106,7 @@ def forward_backward(init_prob, trans_mat, init_states,
     # Scaled forward-backward algorithm.
     log_alphas, consts = forward(init_prob, trans_mat, init_states, lhs.T)
     log_betas = backward(trans_mat, final_states, consts, lhs.T)
+
 
     # Remove the scaling constants.
     acc_lconsts = np.cumsum(log_scaling + np.log(consts))

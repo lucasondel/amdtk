@@ -101,10 +101,62 @@ class NormalGamma(EFDPrior):
 
         """
         EFDPrior.__init__(self)
+
+        self.mean = mean
+        self.kappa = kappa
+        self.rate = rate
+        self.scale = scale
+
+        self._fixed_variance = False
+
         self.natural_params = np.hstack([
             np.asarray(kappa * (mean ** 2) + 2 * scale, dtype=float),
             np.asarray(kappa * mean, dtype=float),
             np.asarray(kappa, dtype=float),
             np.asarray(2 * (rate - 1./2), dtype=float)
         ])
+
+    @property
+    def fixed_variance(self):
+        return self._fixed_variance
+
+    @fixed_variance.setter
+    def fixed_variance(self, value):
+        self._fixed_variance = value
+
+    # EFDPrior interface implementation.
+    # -----------------------------------------------------------------
+
+    def correct_np_value(self, value):
+        # Separate the natural parameters.
+        r_value = value.reshape(4, -1)
+
+        # Convert them to the standard parameters.
+        kappa = r_value[2]
+        mean = r_value[1] / kappa
+        rate = (r_value[3] / 2) + .5
+        scale = (r_value[0] - kappa * (mean ** 2)) / 2
+
+        if self.fixed_variance:
+            # If the variance is fixed don't update it.
+            kappa = self.kappa
+            rate = self.rate
+            scale = self.scale
+        else:
+            # Project back the parameters into their domain.
+            kappa = np.maximum(kappa, 1)
+            rate = np.maximum(rate, 1)
+            scale = np.maximum(scale, 1)
+
+        # Return the corrected standard parameters in their natural
+        # form.
+        return np.hstack([
+            kappa * (mean ** 2) + 2 * scale,
+            kappa * mean,
+            kappa,
+            2 * (rate - 1./2)
+        ])
+
+    # -----------------------------------------------------------------
+
 

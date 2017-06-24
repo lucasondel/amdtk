@@ -192,20 +192,24 @@ class MLP(NeuralNetwork):
 
 class GaussianNeuralNetwork(NeuralNetwork):
 
-    def __init__(self, structure, residuals, inputs=None):
+    def __init__(self, structure, residuals, inputs=None, n_samples=10):
         NeuralNetwork.__init__(self, structure, residuals, inputs)
         self.mean = self.layers[-1].outputs
         self.var = self.layers[-1].var
+        self.n_samples = n_samples
 
         # Noise variable for the reparameterization trick.
         if "gpu" in theano.config.device:
             srng = theano.sandbox.cuda.rng_curand.CURAND_RandomStreams()
         else:
             srng = T.shared_randomstreams.RandomStreams()
-            self.eps = srng.normal(self.mean.shape)
+            self.eps = srng.normal((n_samples, self.mean.shape[0],
+                                    self.mean.shape[1]))
 
         # Latent variable.
         self.sample = self.mean + T.sqrt(self.var) * self.eps
+
+        self.sample = T.reshape(self.sample, (n_samples * self.mean.shape[0], -1))
 
         # Build the functions.
         self.forward = theano.function(

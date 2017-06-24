@@ -221,7 +221,7 @@ class DiscreteLatentModel(PersistentModel, metaclass=abc.ABCMeta):
         self._exp_np_matrix = self._get_components_params_matrix()
 
     @abc.abstractmethod
-    def get_posteriors(self, s_stats, accumulate=False):
+    def get_posteriors(self, s_stats, accumulate=False, alignments=None):
         """Compute the posterior distribution of the latent variables.
 
         Parameters
@@ -231,6 +231,10 @@ class DiscreteLatentModel(PersistentModel, metaclass=abc.ABCMeta):
         accumulate : boolean
             If True, accumulate the sufficient statistics based on the
             posteriors.
+        alignemnts : list of int
+            List of index corresponding to the "true" value of the
+            latent variable. The exact interpreation of these
+            alignments may vary according to the model.
 
         Returns
         -------
@@ -273,6 +277,73 @@ class DiscreteLatentModel(PersistentModel, metaclass=abc.ABCMeta):
         latent_posterior_data = model_data['latent_posterior_data']
         model.latent_posterior = \
             latent_posterior_cls.load_from_dict(latent_posterior_data)
+
+        components = []
+        components_class = model_data['components_class']
+        for comp_data in model_data['components']:
+            comp = components_class.load_from_dict(comp_data)
+        model.components = components
+
+        model.post_update()
+
+        return model
+
+    # -----------------------------------------------------------------
+
+
+class DiscriminativeModel(PersistentModel, metaclass=abc.ABCMeta):
+    """Abstract base class for discriminative models."""
+
+    def __init__(self, components):
+        """Initialize a :class:`DiscriminativeModel`
+
+        Parameters
+        ----------
+        components : list or tuple of :class:`EFDLikelihood`
+            List of distributions / densities for the conditional
+            likelihood. No check is performed but we assumed that all
+            the elements of the list are of the same distribution /
+            density type.
+
+        """
+        self._components = components
+
+    @property
+    def components(self):
+        return self._components
+
+    @components.setter
+    def components(self, value):
+        self._components = value
+
+    def kl_div_posterior_prior(self):
+        """Sum of KL divergence between posteriors/priors.
+
+        The sum of KL divergence between posterior/prior of the
+        parameters of the model.
+
+        Returns
+        -------
+        kl_div : float
+            Kullback-Leibler divergence.
+        """
+        retval = 0.
+        for comp in self.components:
+            retval += comp.posterior.kl_div(comp.prior)
+        return retval
+
+    # PersistentModel interface implementation.
+    # -----------------------------------------------------------------
+
+    def to_dict(self):
+        return {
+            'components_class': self.components[0].__class__,
+            'components': [comp.to_dict() for comp in components]
+        }
+
+    @staticmethod
+    def load_from_dict(cls, model_data):
+        model = cls.__new__(model_data['class'])
 
         components = []
         components_class = model_data['components_class']

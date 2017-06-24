@@ -46,6 +46,31 @@ class EFDPrior(PersistentModel, metaclass=abc.ABCMeta):
         self._log_partition =  None
         self._grad_log_partition = None
 
+    def correct_np_value(self, value):
+        """Correct the value of the natural parameters.
+
+        When doing a gradient ascent, it may happen that the update
+        leads to values outside the domain of the natural parameters.
+        This function simply project back the gradient to the closest
+        point inside the domain of the natural parameters.
+
+        The default behavior of this function is to let the natural
+        parameters untouch. It is the responsibilities of the
+        subclass to implement the correct behavior.
+
+        Parameters
+        ----------
+        value : numpy.ndarray
+            New value of the natural parameters
+
+        Returns
+        -------
+        corrected_value : numpy.ndarray
+            Corrected value of the natural parameters.
+
+        """
+        return value
+
     @property
     def natural_params(self):
         """Vector of natural parameters."""
@@ -53,9 +78,12 @@ class EFDPrior(PersistentModel, metaclass=abc.ABCMeta):
 
     @natural_params.setter
     def natural_params(self, value):
-        self._natural_params = value
-        self._log_partition = self._log_partition_func(value)
-        self._grad_log_partition = self._grad_log_partition_func(value)
+        #corrected_value = self.correct_np_value(value)
+        corrected_value = value
+        self._natural_params = corrected_value
+        self._log_partition = self._log_partition_func(corrected_value)
+        self._grad_log_partition = \
+            self._grad_log_partition_func(corrected_value)
 
     @property
     def log_partition(self):
