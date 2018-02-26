@@ -26,6 +26,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
 import numpy as np
+from scipy.special import logsumexp
 from scipy.sparse import csc_matrix
 
 
@@ -68,52 +69,37 @@ def create_linear_transition_matrix(n_units, n_states):
         for offset in range(n_states):
             state = init_state + offset
             trans_mat[state, state:state + 2] = 0.5
-
+    trans_mat[-1, -1] = 1.
     return csc_matrix(trans_mat)
 
 
-def forward(init_prob, trans_mat, init_states, lhs):
-    alphas = np.zeros_like(lhs)
-    consts = np.zeros(len(lhs))
-    res = lhs[0, init_states] * init_prob
-    consts[0] = res.sum()
-    alphas[0, init_states] = res / consts[0]
-    for i in range(1, lhs.shape[0]):
-        res = lhs[i] * trans_mat.T.dot(alphas[i-1])
-        consts[i] = res.sum()
-        alphas[i] = res / consts[i]
-
-    return np.log(alphas), consts
+def forward(init_log_prob, log_trans_mat, init_states, llhs):
+    log_alphas = np.zeros_like(llhs) - np.inf
+    log_alphas[0, init_states] = llhs[0, init_states] + init_log_prob
+    for i in range(1, llhs.shape[0]):
+        log_alphas[i] = llhs[i]
+        log_alphas[i] += logsumexp(log_alphas[i-1] + log_trans_mat.T, axis=1)
+    return log_alphas
 
 
-def backward(trans_mat, final_states, consts, lhs):
-    betas = np.zeros_like(lhs)
-    betas[-1, final_states] = 1.
-    for i in reversed(range(lhs.shape[0]-1)):
-        res = trans_mat.dot(lhs[i+1] * betas[i+1])
-        betas[i] = res / consts[i+1]
-
-    return np.log(betas)
+def backward(log_trans_mat, final_states, llhs):
+    log_betas = np.zeros_like(llhs) - np.inf
+    log_betas[-1, final_states] = 0.
+    for i in reversed(range(llhs.shape[0]-1)):
+        log_betas[i] = logsumexp(log_trans_mat + llhs[i+1] + log_betas[i+1],
+                                 axis=1)
+    return log_betas
 
 
 def forward_backward(init_prob, trans_mat, init_states,
                      final_states, llhs):
-    # Scale the log-likelihoods before to exponentiate.
-    log_scaling = llhs.max(axis=0)
-    scaled_llhs = llhs - log_scaling
-    lhs = np.exp(scaled_llhs)
+    # Take the log of initial/transition probabilities.
+    init_log_prob = np.log(init_prob)
+    log_trans_mat = np.log(trans_mat.toarray())
 
     # Scaled forward-backward algorithm.
-    log_alphas, consts = forward(init_prob, trans_mat, init_states, lhs.T)
-    log_betas = backward(trans_mat, final_states, consts, lhs.T)
-
-    # Remove the scaling constants.
-    acc_lconsts = np.cumsum(log_scaling + np.log(consts))
-    acc_reversed_lconsts = np.zeros_like(acc_lconsts)
-    acc_reversed_lconsts[0:-1] = np.cumsum((log_scaling + \
-        np.log(consts))[::-1])[::-1][1:]
-    log_alphas += (acc_lconsts)[:, np.newaxis]
-    log_betas += acc_reversed_lconsts[:, np.newaxis]
+    log_alphas = forward(init_log_prob, log_trans_mat, init_states, llhs.T)
+    log_betas = backward(log_trans_mat, final_states, llhs.T)
 
     return log_alphas, log_betas
 
